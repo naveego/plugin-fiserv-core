@@ -6,7 +6,7 @@
   "versionDescription": "Version 2",
   "version": "1.0.0",
   "iconFile": "icon.png",
-  "executable": "PluginFiservCore",
+  "executable": "PluginFiservSignatureCore",
   "kind": "publisher",
   "os": "$GOOS",
   "arch": "$GOARCH",
@@ -43,7 +43,7 @@
         "ConnectionString": {
           "type": "string",
           "title": "Connection String",
-          "description": "The ODBC Connection string with (Optional) PASSWORD in place for your connection secret."
+          "description": "The ODBC connection string with (optional) PASSWORD in place for your connection secret."
         },
         "Password": {
           "type": "string",
