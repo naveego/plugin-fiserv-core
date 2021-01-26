@@ -1,0 +1,57 @@
+{
+  "id": "plugin-fiserv-core",
+  "displayName": "Fiserv Signature Core",
+  "description": "Publisher which connects to Fiserv Signature Core",
+  "apiVersion": "2",
+  "versionDescription": "Version 2",
+  "version": "1.0.0",
+  "iconFile": "icon.png",
+  "executable": "PluginFiservCore",
+  "kind": "publisher",
+  "os": "$GOOS",
+  "arch": "$GOARCH",
+  "accessGroups": [],
+  "canConfigure": true,
+  "canProduceMultipleSchemas": true,
+  "canAcceptQueryBasedSchemas": true,
+  "canUseOAuth": false,
+  "canConfigureWrite": false,
+  "canWrite": false,
+  "canConfigureReplication": false,
+  "canWriteReplication": false,
+  "querySchema": {
+    "ui": {
+      "ui:widget": "code",
+      "ui:options": {
+        "language": "sql"
+      }
+    },
+    "schema": {
+      "type": "string"
+    }
+  },
+  "configSchema": {
+    "ui": {
+      "ui:order": ["ConnectionString", "Password"],
+      "Password": {
+        "ui:widget": "password"
+      }
+    },
+    "schema": {
+      "type": "object",
+      "properties": {
+        "ConnectionString": {
+          "type": "string",
+          "title": "Connection String",
+          "description": "The ODBC Connection string with (Optional) PASSWORD in place for your connection secret."
+        },
+        "Password": {
+          "type": "string",
+          "title": "Password",
+          "description": "(Optional) The secret of your connection string. Will replace PASSWORD in the connection string."
+        }
+      },
+      "required": ["ConnectionString"]
+    }
+  }
+}
