@@ -17,7 +17,9 @@ namespace PluginFiservSignatureCore.Tests.Plugin
         {
             return new Settings
             {
-                ConnectionString = "",
+                Server = "",
+                Database = "",
+                Username = "",
                 Password = ""
             };
         }

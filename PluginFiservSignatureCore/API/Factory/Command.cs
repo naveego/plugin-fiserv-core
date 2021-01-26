@@ -1,30 +1,31 @@
 using System.Data.Odbc;
 using System.Threading.Tasks;
+using IBM.Data.DB2.iSeries;
 
 namespace PluginFiservSignatureCore.API.Factory
 {
     public class Command : ICommand
     {
-        private readonly OdbcCommand _cmd;
+        private readonly iDB2Command _cmd;
 
         public Command()
         {
-            _cmd = new OdbcCommand();
+            _cmd = new iDB2Command();
         }
 
         public Command(string commandText)
         {
-            _cmd = new OdbcCommand(commandText);
+            _cmd = new iDB2Command(commandText);
         }
 
         public Command(string commandText, IConnection conn)
         {
-            _cmd = new OdbcCommand(commandText, (OdbcConnection) conn.GetConnection());
+            _cmd = new iDB2Command(commandText, (iDB2Connection) conn.GetConnection());
         }
 
         public void SetConnection(IConnection conn)
         {
-            _cmd.Connection = (OdbcConnection) conn.GetConnection();
+            _cmd.Connection = (iDB2Connection) conn.GetConnection();
         }
 
         public void SetCommandText(string commandText)

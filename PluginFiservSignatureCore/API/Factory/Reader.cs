@@ -1,16 +1,17 @@
 using System.Data;
 using System.Data.Odbc;
 using System.Threading.Tasks;
+using IBM.Data.DB2.iSeries;
 
 namespace PluginFiservSignatureCore.API.Factory
 {
     public class Reader : IReader
     {
-        private readonly OdbcDataReader _reader;
+        private readonly iDB2DataReader _reader;
 
         public Reader(IDataReader reader)
         {
-            _reader = (OdbcDataReader) reader;
+            _reader = (iDB2DataReader) reader;
         }
 
         public async Task<bool> ReadAsync()
