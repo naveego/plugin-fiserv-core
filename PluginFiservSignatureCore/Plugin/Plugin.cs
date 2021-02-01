@@ -58,7 +58,7 @@ namespace PluginFiservSignatureCore.Plugin
         }
 
         /// <summary>
-        /// Establishes a connection with DB2.
+        /// Establishes a connection with Fiserv Signature Core.
         /// </summary>
         /// <param name="request"></param>
         /// <param name="context"></param>
@@ -166,7 +166,7 @@ namespace PluginFiservSignatureCore.Plugin
 
 
         /// <summary>
-        /// Discovers schemas located in the users DB2 database
+        /// Discovers schemas located in the users Fiserv Signature Core database
         /// </summary>
         /// <param name="request"></param>
         /// <param name="context"></param>
@@ -344,7 +344,7 @@ namespace PluginFiservSignatureCore.Plugin
         }
 
         /// <summary>
-        /// Configures replication writebacks to DB2
+        /// Configures replication writebacks to Fiserv Signature Core
         /// </summary>
         /// <param name="request"></param>
         /// <param name="context"></param>
@@ -400,7 +400,7 @@ namespace PluginFiservSignatureCore.Plugin
         }
 
         /// <summary>
-        /// Prepares writeback settings to write to DB2
+        /// Prepares writeback settings to write to Fiserv Signature Core
         /// </summary>
         /// <param name="request"></param>
         /// <param name="context"></param>
@@ -446,7 +446,7 @@ namespace PluginFiservSignatureCore.Plugin
         }
 
         /// <summary>
-        /// Writes records to DB2
+        /// Writes records to Fiserv Signature Core
         /// </summary>
         /// <param name="requestStream"></param>
         /// <param name="responseStream"></param>
@@ -457,7 +457,7 @@ namespace PluginFiservSignatureCore.Plugin
         {
             try
             {
-                Logger.Info("Writing records to DB2...");
+                Logger.Info("Writing records to Fiserv Signature Core...");
             
                 var schema = _server.WriteSettings.Schema;
                 var inCount = 0;
@@ -480,20 +480,20 @@ namespace PluginFiservSignatureCore.Plugin
                         // send record to source system
                         // add await for unit testing 
                         // removed to allow multiple to run at the same time
-                        Task.Run(async () => await Replication.WriteRecord(_connectionFactory, schema, record, config, responseStream), context.CancellationToken);
+                        await Task.Run(async () => await Replication.WriteRecord(_connectionFactory, schema, record, config, responseStream), context.CancellationToken);
                     }
                     else
                     {
                         // send record to source system
                         // add await for unit testing 
                         // removed to allow multiple to run at the same time
-                        Task.Run(async () =>
+                        await Task.Run(async () =>
                                 await Write.WriteRecordAsync(_connectionFactory, schema, record, responseStream),
                             context.CancellationToken);
                     }
                 }
             
-                Logger.Info($"Wrote {inCount} records to DB2.");
+                Logger.Info($"Wrote {inCount} records to Fiserv Signature Core.");
             }
             catch (Exception e)
             {
