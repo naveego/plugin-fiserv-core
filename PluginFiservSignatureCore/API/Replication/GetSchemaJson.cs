@@ -16,19 +16,19 @@ namespace PluginFiservSignatureCore.API.Replication
                     {
                         {"type", "string"},
                         {"title", "Schema Name"},
-                        {"description", "Name of schema to put golden and version tables into in DB2"},
+                        {"description", "Name of schema to put golden and version tables into in Fiserv Signature Core"},
                     }},
                     {"GoldenTableName", new Dictionary<string, string>
                     {
                         {"type", "string"},
                         {"title", "Golden Record Table Name"},
-                        {"description", "Name for your golden record table in DB2"},
+                        {"description", "Name for your golden record table in Fiserv Signature Core"},
                     }},
                     {"VersionTableName", new Dictionary<string, string>
                     {
                         {"type", "string"},
                         {"title", "Version Record Bucket Name"},
-                        {"description", "Name for your version record table in DB2"},
+                        {"description", "Name for your version record table in Fiserv Signature Core"},
                     }},
                 }},
                 {"required", new []
