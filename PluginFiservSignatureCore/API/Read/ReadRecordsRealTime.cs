@@ -38,7 +38,6 @@ namespace PluginFiservSignatureCore.API.Read
                     new RealTimeState();
                 var tcs = new TaskCompletionSource<DateTime>();
 
-                // isnt triggered in test currently
                 if (jobVersion > realTimeState.JobVersion)
                 {
                     realTimeState.LastReadTime = DateTime.MinValue;
@@ -49,8 +48,6 @@ namespace PluginFiservSignatureCore.API.Read
                 while (!context.CancellationToken.IsCancellationRequested)
                 {
                     foreach( var table in realTimeSettings.TableInformation){
-                        var test = string.Format(journalQuery,table.ConnectionName,table.JournalName, realTimeState.LastJournalEntryId, 
-                        table.TargetJournalLibrary, table.TargetTable);
                         var cmd = connFactory.GetCommand(string.Format(journalQuery,table.ConnectionName,table.JournalName, realTimeState.LastJournalEntryId, 
                         table.TargetJournalLibrary, table.TargetTable), conn);
 
@@ -73,7 +70,6 @@ namespace PluginFiservSignatureCore.API.Read
                         {
                             while (await reader.ReadAsync())
                             {
-                                // read each updated row
                                 var connectionString = reader.GetValueById("JOLIB", '"').ToString();
                                 var tableName = reader.GetValueById("JOMBR", '"').ToString();
                                 var rowNumber = reader.GetValueById("JOCTRR", '"').ToString();
@@ -93,12 +89,9 @@ namespace PluginFiservSignatureCore.API.Read
                                 await connRRN.OpenAsync();
                                 var cmdRRN = connFactory.GetCommand("",connRRN);
                                 if (whereMatch.Count == 1){
-                                    // append and
                                     cmdRRN = connFactory.GetCommand(string.Format(rrnQuery,request.Schema.Query,"AND",tableShortName,rowNumber), connRRN); 
                                 }
                                 else{
-                                    // append where
-                                    var cmdString = string.Format(rrnQuery,request.Schema.Query,"WHERE",tableShortName,rowNumber);
                                     cmdRRN = connFactory.GetCommand(string.Format(rrnQuery,request.Schema.Query,"WHERE",tableShortName,rowNumber), connRRN); 
                                 }
                                 
@@ -109,14 +102,8 @@ namespace PluginFiservSignatureCore.API.Read
                                 {
                                     readerRRN = await cmdRRN.ExecuteReaderAsync();
 
-                                    // TODO: process results from reader and send records back
-
-                                    // (ReadRecords.cs)
-                                    // check has rows
                                     if (readerRRN.HasRows()) 
                                     {
-                                        // (ReadRecords.cs)
-                                        // build record map from schema properties
                                         var recordMap = new Dictionary<string, object>();
 
                                         foreach (var property in schema.Properties)
@@ -149,8 +136,6 @@ namespace PluginFiservSignatureCore.API.Read
                                             DataJson = JsonConvert.SerializeObject(recordMap)
                                         };
 
-                                        // (Plugin.cs ReadStream)
-                                        // write record to response stream
                                         await responseStream.WriteAsync(record);
                                         currentRunRecordsCount++;
                                         recordsCount++;
