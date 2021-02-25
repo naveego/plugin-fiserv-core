@@ -5,14 +5,17 @@ using System.Data;
 using System.Data.Odbc;
 using System.Linq;
 using System.Threading.Tasks;
+using System.Threading;
 using Google.Protobuf.WellKnownTypes;
 using Grpc.Core;
 using Moq;
 using Naveego.Sdk.Plugins;
 using PluginFiservSignatureCore.Helper;
 using PluginFiservSignatureCore.API.Factory;
+using PluginFiservSignatureCore.API.Read;
 
 using Xunit;
+using Newtonsoft.Json;
 using Record = Naveego.Sdk.Plugins.Record;
 
 namespace PluginFiservSignatureCore.Plugin
@@ -30,6 +33,16 @@ namespace PluginFiservSignatureCore.Plugin
                 OauthConfiguration = new OAuthConfiguration(),
                 OauthStateJson = ""
             };
+        }
+
+        private Dictionary<string,object> SendCancellationRequest()
+        {
+            Task.Delay(10000);
+            Dictionary<string, object> context  = new Dictionary<string, object>(); 
+            Dictionary<string, bool> cancellationToken  = new Dictionary<string, bool>(); 
+            cancellationToken.Add("IsCancellationRequested", true);
+            context.Add("CancellationToken", cancellationToken);
+            return context;
         }
         
         private IConnectionFactory GetMockConnectionFactory()
@@ -151,10 +164,143 @@ namespace PluginFiservSignatureCore.Plugin
 
                   return mockOdbcCommand.Object;
               });
+            
+            mockFactory.Setup(m => m.GetCommand("SELECT JOCTRR, JOLIB, JOMBR, JOSEQN FROM HLDQRY001.KPCBT11101 WHERE JOSEQN > 0 AND JOLIB = BNKPRD01 AND JOMBR = TAP00201", _mockOdbcConnection.Object))
+                .Returns(() =>
+                {
+                    var mockOdbcCommand = new Mock<ICommand>();
 
-          return mockFactory.Object;
+                    mockOdbcCommand.Setup(c => c.ExecuteReaderAsync())
+                        .Returns(() =>
+                        {
+                            var mockReader = new Mock<IReader>();
+
+                            mockReader.Setup(r => r.HasRows())
+                                .Returns(true);
+
+                            var readToggle = new List<bool> {true, true, false};
+                            var readIndex = 0;
+
+                            var resultRows = new List<Dictionary<string,object>>
+                            {
+                                {new Dictionary<string, object>{
+                                    {"JOLIB", "BNKPRD01"},
+                                    {"JOMBR", "TAP00201"},
+                                    {"JOCTRR", "734837"},
+                                    {"JOSEQN","1310675271"}
+                                }},
+                                {new Dictionary<string, object>{
+                                    {"JOLIB", "BNKPRD01"},
+                                    {"JOMBR", "TAP00201"},
+                                    {"JOCTRR", "734838"},
+                                    {"JOSEQN","1310675272"}
+                                }},
+                            };
+
+                            mockReader.Setup(r => r.ReadAsync())
+                                .Returns(() => Task.FromResult(readToggle[readIndex]))
+                                .Callback(() => readIndex++);
+
+                            mockReader.Setup(r => r.GetValueById("JOLIB", '"'))
+                                .Returns(resultRows[readIndex]["JOLIB"]);
+                            mockReader.Setup(r => r.GetValueById("JOMBR", '"'))
+                                .Returns(resultRows[readIndex]["JOMBR"]);
+                            mockReader.Setup(r => r.GetValueById("JOCTRR", '"'))
+                                .Returns(resultRows[readIndex]["JOCTRR"]);
+                            mockReader.Setup(r => r.GetValueById("JOSEQN", '"'))
+                                .Returns(resultRows[readIndex]["JOSEQN"]);                          
+
+                            return Task.FromResult(mockReader.Object);
+                        });
+
+                    return mockOdbcCommand.Object;
+                });
+
+                mockFactory.Setup(m => m.GetCommand("SELECT JOCTRR, JOLIB, JOMBR, JOSEQN FROM HLDQRY001.KPCBT11101 WHERE JOSEQN > 1310675271 AND JOLIB = BNKPRD01 AND JOMBR = TAP00201", _mockOdbcConnection.Object))
+                .Returns(() =>
+                {
+                    var mockOdbcCommand = new Mock<ICommand>();
+
+                    mockOdbcCommand.Setup(c => c.ExecuteReaderAsync())
+                        .Returns(() =>
+                        {
+                            var mockReader = new Mock<IReader>();
+
+                            mockReader.Setup(r => r.HasRows())
+                                .Returns(true);
+
+                            var readToggle = new List<bool> {false};
+                            var readIndex = 0;
+
+                            mockReader.Setup(r => r.ReadAsync())
+                                .Returns(() => Task.FromResult(readToggle[readIndex]))
+                                .Callback(() => readIndex++);                        
+
+                            return Task.FromResult(mockReader.Object);
+                        });
+
+                    return mockOdbcCommand.Object;
+                });
+
+                mockFactory.Setup(m => m.GetCommand("SELECT a.1\n                b.2\n                c.2\n                FROM BNKPRD01.TAP00201 a\n                LEFT OUTER JOIN BNKPRD01.TAP00202 b\n                ON a.1 = b.1\n                LEFT OUTER JOIN BNKPRD01.TAP002 c\n                ON a.1 = c.1 WHERE RRN(a) = 734837", _mockOdbcConnection.Object))
+                .Returns(() =>
+                {
+                    var mockOdbcCommand = new Mock<ICommand>();
+
+                    mockOdbcCommand.Setup(c => c.ExecuteReaderAsync())
+                        .Returns(() =>
+                        {
+                            var mockReader = new Mock<IReader>();
+
+                            mockReader.Setup(r => r.HasRows())
+                                .Returns(true);
+
+                            var readToggle = new List<bool> {true, false};
+                            var readIndex = 0;
+                            mockReader.Setup(r => r.ReadAsync())
+                                .Returns(() => Task.FromResult(readToggle[readIndex]))
+                                .Callback(() => readIndex++);
+
+                            mockReader.Setup(r => r.GetValueById("Id", '"'))
+                                .Returns(5);
+                            mockReader.Setup(r => r.GetValueById("Name", '"'))
+                                .Returns("Test");                   
+
+                            return Task.FromResult(mockReader.Object);
+                        });
+
+                    return mockOdbcCommand.Object;
+                });
+
+                mockFactory.Setup(m => m.GetCommand("SELECT a.1\n                b.2\n                c.2\n                FROM BNKPRD01.TAP00201 a\n                LEFT OUTER JOIN BNKPRD01.TAP00202 b\n                ON a.1 = b.1\n                LEFT OUTER JOIN BNKPRD01.TAP002 c\n                ON a.1 = c.1 WHERE RRN(a) = 734838", _mockOdbcConnection.Object))
+                .Returns(() =>
+                {
+                    var mockOdbcCommand = new Mock<ICommand>();
+
+                    mockOdbcCommand.Setup(c => c.ExecuteReaderAsync())
+                        .Returns(() =>
+                        {
+                            var mockReader = new Mock<IReader>();
+
+                            mockReader.Setup(r => r.HasRows())
+                                .Returns(true);
+
+                            var readToggle = new List<bool> {true, false};
+                            var readIndex = 0;
+                            mockReader.Setup(r => r.ReadAsync())
+                                .Returns(() => Task.FromResult(readToggle[readIndex]))
+                                .Callback(() => readIndex++);                       
+
+                            return Task.FromResult(mockReader.Object);
+                        });
+
+                    return mockOdbcCommand.Object;
+                });
+
+            return mockFactory.Object;
         }
 
+        
         // private Func<Settings, IConnection> GetMockConnectionFactoryOld()
         // {
         //     return cs =>
@@ -278,6 +424,57 @@ namespace PluginFiservSignatureCore.Plugin
                 Id = "test",
                 Name = "test",
                 Query = query
+            };
+        }
+
+        private Schema GetTestSchemaRealTime()
+        {
+            return new Schema
+            {
+                Id = "test",
+                Name = "test",
+                Query = @"SELECT a.1
+                b.2
+                c.2
+                FROM BNKPRD01.TAP00201 a
+                LEFT OUTER JOIN BNKPRD01.TAP00202 b
+                ON a.1 = b.1
+                LEFT OUTER JOIN BNKPRD01.TAP002 c
+                ON a.1 = c.1",
+                Properties =    
+                {
+                    new Property
+                    {
+                        Id = "Id",
+                        Name = "Id",
+                        Type = PropertyType.Integer,
+                        IsKey = true
+                    },
+                    new Property
+                    {
+                        Id = "Name",
+                        Name = "Name",
+                        Type = PropertyType.String
+                    }
+                }
+            };
+        }
+
+        private RealTimeSettings GetRealTimeSettings()
+        {
+            return new RealTimeSettings
+            {
+                PollingIntervalSeconds = 5,
+                TableInformation = new List<RealTimeSettings.JournalInfo>
+                    {
+                        new RealTimeSettings.JournalInfo
+                        {
+                            ConnectionName= "HLDQRY001",
+                            JournalName= "KPCBT11101",
+                            TargetJournalLibrary = "BNKPRD01",
+                            TargetTable ="TAP00201"
+                        }
+                    }
             };
         }
 
@@ -537,6 +734,73 @@ namespace PluginFiservSignatureCore.Plugin
             await channel.ShutdownAsync();
             await server.ShutdownAsync();
         }
+
+        [Fact]
+        public async Task ReadStreamRealTimeTest()
+        {
+            // setup
+            Server server = new Server
+            {
+                Services = {Publisher.BindService(new PluginFiservSignatureCore.Plugin.Plugin(GetMockConnectionFactory()))},
+                Ports = {new ServerPort("localhost", 0, ServerCredentials.Insecure)}
+            };
+            server.Start();
+
+            var port = server.Ports.First().BoundPort;
+
+            var channel = new Channel($"localhost:{port}", ChannelCredentials.Insecure);
+            var client = new Publisher.PublisherClient(channel);
+
+            var connectRequest = GetConnectSettings();
+
+            var request = new ReadRequest()
+            {
+                Schema = GetTestSchemaRealTime(),
+                Limit = 2,
+                RealTimeSettingsJson = JsonConvert.SerializeObject(GetRealTimeSettings()),
+                RealTimeStateJson = JsonConvert.SerializeObject(new RealTimeState()),
+                DataVersions = new DataVersions
+                {
+                    JobDataVersion = 1
+                },
+            };
+
+            // number of records w/ w/out data, number of real time state commits, realt time staate last read
+            // act
+            client.Connect(connectRequest);
+
+            var cancellationToken = new CancellationTokenSource();
+            cancellationToken.CancelAfter(4000);
+
+            // only way to get out of the loop when running the test, but will throw additional exception becasue 
+            // of the cancellationToken
+            // var response = client.ReadStream(request, null, null, cancellationToken.Token);
+            var response = client.ReadStream(request);
+            var responseStream = response.ResponseStream;
+            var records = new List<Record>();
+
+            while (await responseStream.MoveNext())
+            {
+                records.Add(responseStream.Current);
+            }
+
+            // assert
+            var recordsRts = records.Select(r => r.Action == Record.Types.Action.RealTimeStateCommit).ToList();
+            Assert.Equal(3, records.Count); // total
+            var rtsCommits = 0;
+            foreach(var record in recordsRts){
+                if (record == true){
+                    rtsCommits++;
+                }
+            }
+            Assert.Equal(1, rtsCommits);
+            
+
+            // cleanup
+            await channel.ShutdownAsync();
+            await server.ShutdownAsync();
+        }
+
 
         [Fact]
         public async Task PrepareWriteTest()

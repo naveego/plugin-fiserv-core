@@ -31,7 +31,7 @@ namespace PluginFiservSignatureCore.Plugin
                 WriteConfigured = false
             };
         }
-        
+
         /// <summary>
         /// Configures the plugin
         /// </summary>
@@ -42,12 +42,12 @@ namespace PluginFiservSignatureCore.Plugin
         {
             Logger.Debug("Got configure request");
             Logger.Debug(JsonConvert.SerializeObject(request, Formatting.Indented));
-            
+
             // ensure all directories are created
             Directory.CreateDirectory(request.TemporaryDirectory);
             Directory.CreateDirectory(request.PermanentDirectory);
             Directory.CreateDirectory(request.LogDirectory);
-            
+
             // configure logger
             Logger.SetLogLevel(request.LogLevel);
             Logger.Init(request.LogDirectory);
@@ -177,7 +177,7 @@ namespace PluginFiservSignatureCore.Plugin
             Logger.SetLogPrefix("discover");
             Logger.Info("Discovering Schemas...");
 
-            var sampleSize = checked((int) request.SampleSize);
+            var sampleSize = checked((int)request.SampleSize);
 
             DiscoverSchemasResponse discoverSchemasResponse = new DiscoverSchemasResponse();
 
@@ -227,6 +227,51 @@ namespace PluginFiservSignatureCore.Plugin
         }
 
         /// <summary>
+        /// Configures the plugin for a real time read
+        /// </summary>
+        /// <param name="request"></param>
+        /// <param name="context"></param>
+        /// <returns></returns>
+        public override Task<ConfigureRealTimeResponse> ConfigureRealTime(ConfigureRealTimeRequest request, ServerCallContext context)
+        {
+            Logger.Info("Configuring real time...");
+
+            var schemaJson = Read.GetSchemaJson();
+            var uiJson = Read.GetUIJson();
+
+
+            // if first call 
+            if (string.IsNullOrWhiteSpace(request.Form.DataJson) || request.Form.DataJson == "{}")
+            {
+                return Task.FromResult(new ConfigureRealTimeResponse
+                {
+                    Form = new ConfigurationFormResponse
+                    {
+                        DataJson = request.Form.DataJson,
+                        DataErrorsJson = "",
+                        Errors = { },
+                        SchemaJson = schemaJson,
+                        UiJson = uiJson,
+                        StateJson = request.Form.StateJson,
+                    }
+                });
+            }
+
+            return Task.FromResult(new ConfigureRealTimeResponse
+            {
+                Form = new ConfigurationFormResponse
+                {
+                    DataJson = request.Form.DataJson,
+                    DataErrorsJson = "",
+                    Errors = { },
+                    SchemaJson = schemaJson,
+                    UiJson = uiJson,
+                    StateJson = request.Form.StateJson,
+                }
+            });
+        }
+
+        /// <summary>
         /// Publishes a stream of data for a given schema
         /// </summary>
         /// <param name="request"></param>
@@ -242,26 +287,37 @@ namespace PluginFiservSignatureCore.Plugin
                 var limit = request.Limit;
                 var limitFlag = request.Limit != 0;
                 var jobId = request.JobId;
-                var recordsCount = 0;
+                long recordsCount = 0;
 
                 Logger.SetLogPrefix(jobId);
 
-                var records = Read.ReadRecords(_connectionFactory, schema);
-
-                await foreach (var record in records)
+                if (!string.IsNullOrWhiteSpace(request.RealTimeSettingsJson))
                 {
-                    // stop publishing if the limit flag is enabled and the limit has been reached or the server is disconnected
-                    if (limitFlag && recordsCount == limit || !_server.Connected)
+                    recordsCount = await Read.ReadRecordsRealTimeAsync(_connectionFactory, request, responseStream, context);
+                }
+                else
+                {
+                    var records = Read.ReadRecords(_connectionFactory, schema);
+
+                    await foreach (var record in records)
                     {
-                        break;
+                        // stop publishing if the limit flag is enabled and the limit has been reached or the server is disconnected
+                        if (limitFlag && recordsCount == limit || !_server.Connected)
+                        {
+                            break;
+                        }
+
+                        // publish record
+                        await responseStream.WriteAsync(record);
+                        recordsCount++;
                     }
 
-                    // publish record
-                    await responseStream.WriteAsync(record);
-                    recordsCount++;
                 }
-
                 Logger.Info($"Published {recordsCount} records");
+            }
+            catch (TaskCanceledException e)
+            {
+                Logger.Info($"Operation cancelled {e.Message}");
             }
             catch (Exception e)
             {
@@ -333,7 +389,7 @@ namespace PluginFiservSignatureCore.Plugin
                     Form = new ConfigurationFormResponse
                     {
                         DataJson = request.Form.DataJson,
-                        Errors = {e.Message},
+                        Errors = { e.Message },
                         SchemaJson = schemaJson,
                         UiJson = uiJson,
                         StateJson = request.Form.StateJson
@@ -375,7 +431,7 @@ namespace PluginFiservSignatureCore.Plugin
                     Form = new ConfigurationFormResponse
                     {
                         DataJson = request.Form.DataJson,
-                        Errors = {errors},
+                        Errors = { errors },
                         SchemaJson = schemaJson,
                         UiJson = uiJson,
                         StateJson = request.Form.StateJson
@@ -390,7 +446,7 @@ namespace PluginFiservSignatureCore.Plugin
                     Form = new ConfigurationFormResponse
                     {
                         DataJson = request.Form.DataJson,
-                        Errors = {e.Message},
+                        Errors = { e.Message },
                         SchemaJson = schemaJson,
                         UiJson = uiJson,
                         StateJson = request.Form.StateJson
@@ -458,7 +514,7 @@ namespace PluginFiservSignatureCore.Plugin
             try
             {
                 Logger.Info("Writing records to DB2...");
-            
+
                 var schema = _server.WriteSettings.Schema;
                 var inCount = 0;
 
@@ -468,15 +524,15 @@ namespace PluginFiservSignatureCore.Plugin
                 {
                     var record = requestStream.Current;
                     inCount++;
-            
+
                     Logger.Debug($"Got record: {record.DataJson}");
-            
+
                     if (_server.WriteSettings.IsReplication())
                     {
                         var config =
                             JsonConvert.DeserializeObject<ConfigureReplicationFormData>(_server.WriteSettings.Replication
                                 .SettingsJson);
-                        
+
                         // send record to source system
                         // add await for unit testing 
                         // removed to allow multiple to run at the same time
@@ -492,7 +548,7 @@ namespace PluginFiservSignatureCore.Plugin
                             context.CancellationToken);
                     }
                 }
-            
+
                 Logger.Info($"Wrote {inCount} records to DB2.");
             }
             catch (Exception e)
