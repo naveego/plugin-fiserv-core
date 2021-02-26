@@ -10,10 +10,10 @@ using PluginFiservSignatureCore.Helper;
 
 namespace PluginFiservSignatureCore.API.Read
 {
-
     public static partial class Read
     {
-        private static readonly string journalQuery = @"SELECT JOCTRR, JOLIB, JOMBR, JOSEQN FROM {0}.{1} WHERE JOSEQN > {2} AND JOLIB = {3} AND JOMBR = {4}";
+        private static readonly string journalQuery =
+            @"SELECT JOCTRR, JOLIB, JOMBR, JOSEQN FROM {0}.{1} WHERE JOSEQN > {2} AND JOLIB = {3} AND JOMBR = {4}";
 
         private static readonly string rrnQuery = @"{0} {1} RRN({2}) = {3}";
 
@@ -22,7 +22,7 @@ namespace PluginFiservSignatureCore.API.Read
             ServerCallContext context)
         {
             Logger.Info("Beginning to read records real time...");
-            
+
             var schema = request.Schema;
             var jobVersion = request.DataVersions.JobDataVersion;
             var recordsCount = 0;
@@ -33,28 +33,29 @@ namespace PluginFiservSignatureCore.API.Read
             {
                 Logger.Info("Real time read initializing...");
                 var realTimeSettings = JsonConvert.DeserializeObject<RealTimeSettings>(request.RealTimeSettingsJson);
-                var realTimeState = !string.IsNullOrWhiteSpace(request.RealTimeStateJson) ?
-                    JsonConvert.DeserializeObject<RealTimeState>(request.RealTimeStateJson) :
-                    new RealTimeState();
-                var tcs = new TaskCompletionSource<DateTime>();
+                var realTimeState = !string.IsNullOrWhiteSpace(request.RealTimeStateJson)
+                    ? JsonConvert.DeserializeObject<RealTimeState>(request.RealTimeStateJson)
+                    : new RealTimeState();
 
                 if (jobVersion > realTimeState.JobVersion)
                 {
                     realTimeState.LastReadTime = DateTime.MinValue;
                 }
-                
+
                 Logger.Info("Real time read initialized.");
 
                 while (!context.CancellationToken.IsCancellationRequested)
                 {
-                    foreach( var table in realTimeSettings.TableInformation){
-                        var cmd = connFactory.GetCommand(string.Format(journalQuery,table.ConnectionName,table.JournalName, realTimeState.LastJournalEntryId, 
-                        table.TargetJournalLibrary, table.TargetTable), conn);
+                    foreach (var table in realTimeSettings.TableInformation)
+                    {
+                        var cmd = connFactory.GetCommand(string.Format(journalQuery, table.TargetJournalLibrary,
+                            table.TargetJournalName, realTimeState.LastJournalEntryId,
+                            table.TargetTableLibrary, table.TargetTableName), conn);
 
                         long currentRunRecordsCount = 0;
                         Logger.Debug($"Getting all records since {realTimeState.LastReadTime.ToUniversalTime():O}");
-                        
-                        
+
+
                         IReader reader;
                         try
                         {
@@ -65,7 +66,7 @@ namespace PluginFiservSignatureCore.API.Read
                             Logger.Error(e, e.Message);
                             break;
                         }
-                        
+
                         if (reader.HasRows())
                         {
                             while (await reader.ReadAsync())
@@ -74,7 +75,7 @@ namespace PluginFiservSignatureCore.API.Read
                                 var tableName = reader.GetValueById("JOMBR", '"').ToString();
                                 var rowNumber = reader.GetValueById("JOCTRR", '"').ToString();
                                 var LastJournalEntryId = reader.GetValueById("JOSEQN", '"').ToString();
-                                
+
                                 string tablePattern = connectionString + "." + tableName + @"\s[a-zA-Z0-9]*";
                                 Regex tableReg = new Regex(tablePattern);
                                 MatchCollection tableMatch = tableReg.Matches(request.Schema.Query);
@@ -82,27 +83,32 @@ namespace PluginFiservSignatureCore.API.Read
                                 var tableShortName = tableShortNameArray[1];
 
                                 string wherePattern = @"\s[wW][hH][eE][rR][eE]\s[a-zA-Z0-9.\s=><'""]*\Z";
-                                Regex whereReg = new Regex(wherePattern); 
+                                Regex whereReg = new Regex(wherePattern);
                                 MatchCollection whereMatch = whereReg.Matches(request.Schema.Query);
-                                
+
                                 var connRRN = connFactory.GetConnection();
                                 await connRRN.OpenAsync();
-                                var cmdRRN = connFactory.GetCommand("",connRRN);
-                                if (whereMatch.Count == 1){
-                                    cmdRRN = connFactory.GetCommand(string.Format(rrnQuery,request.Schema.Query,"AND",tableShortName,rowNumber), connRRN); 
+                                var cmdRRN = connFactory.GetCommand("", connRRN);
+                                if (whereMatch.Count == 1)
+                                {
+                                    cmdRRN = connFactory.GetCommand(
+                                        string.Format(rrnQuery, request.Schema.Query, "AND", tableShortName, rowNumber),
+                                        connRRN);
                                 }
-                                else{
-                                    cmdRRN = connFactory.GetCommand(string.Format(rrnQuery,request.Schema.Query,"WHERE",tableShortName,rowNumber), connRRN); 
+                                else
+                                {
+                                    cmdRRN = connFactory.GetCommand(
+                                        string.Format(rrnQuery, request.Schema.Query, "WHERE", tableShortName,
+                                            rowNumber), connRRN);
                                 }
-                                
-                                
+
                                 // read actual row
                                 IReader readerRRN;
                                 try
                                 {
                                     readerRRN = await cmdRRN.ExecuteReaderAsync();
 
-                                    if (readerRRN.HasRows()) 
+                                    if (readerRRN.HasRows())
                                     {
                                         var recordMap = new Dictionary<string, object>();
 
@@ -115,10 +121,12 @@ namespace PluginFiservSignatureCore.API.Read
                                                     case PropertyType.String:
                                                     case PropertyType.Text:
                                                     case PropertyType.Decimal:
-                                                        recordMap[property.Id] = readerRRN.GetValueById(property.Id, '"').ToString();
+                                                        recordMap[property.Id] =
+                                                            readerRRN.GetValueById(property.Id, '"').ToString();
                                                         break;
                                                     default:
-                                                        recordMap[property.Id] = readerRRN.GetValueById(property.Id, '"');
+                                                        recordMap[property.Id] =
+                                                            readerRRN.GetValueById(property.Id, '"');
                                                         break;
                                                 }
                                             }
@@ -146,17 +154,18 @@ namespace PluginFiservSignatureCore.API.Read
                                     Logger.Error(e, e.Message);
                                     break;
                                 }
-                                finally 
+                                finally
                                 {
                                     await connRRN.CloseAsync();
                                 }
 
                                 realTimeState.LastJournalEntryId = Convert.ToInt64(LastJournalEntryId);
 
-                                if (currentRunRecordsCount%1000 == 0) {
+                                if (currentRunRecordsCount % 1000 == 0)
+                                {
                                     realTimeState.LastReadTime = DateTime.Now;
                                     realTimeState.JobVersion = jobVersion;
-                                    
+
                                     var realTimeStateCommit = new Record
                                     {
                                         Action = Record.Types.Action.RealTimeStateCommit,
@@ -164,14 +173,16 @@ namespace PluginFiservSignatureCore.API.Read
                                     };
                                     await responseStream.WriteAsync(realTimeStateCommit);
 
-                                    Logger.Debug($"Got {currentRunRecordsCount} records since {realTimeState.LastReadTime.ToUniversalTime():O}");
+                                    Logger.Debug(
+                                        $"Got {currentRunRecordsCount} records since {realTimeState.LastReadTime.ToUniversalTime():O}");
                                 }
                             }
                         }
                     }
+
                     realTimeState.LastReadTime = DateTime.Now;
                     realTimeState.JobVersion = jobVersion;
-                    
+
                     var realTimeStateCommitFinal = new Record
                     {
                         Action = Record.Types.Action.RealTimeStateCommit,
@@ -195,11 +206,11 @@ namespace PluginFiservSignatureCore.API.Read
                 Logger.Error(e, e.Message, context);
                 throw;
             }
-            finally 
+            finally
             {
                 await conn.CloseAsync();
             }
-            
+
             return recordsCount;
         }
     }

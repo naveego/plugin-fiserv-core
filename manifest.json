@@ -19,6 +19,7 @@
   "canWrite": false,
   "canConfigureReplication": false,
   "canWriteReplication": false,
+  "canConfigureRealTime": true,
   "querySchema": {
     "ui": {
       "ui:widget": "code",

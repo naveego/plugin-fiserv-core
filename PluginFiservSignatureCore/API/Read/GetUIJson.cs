@@ -9,10 +9,22 @@ namespace PluginFiservSignatureCore.API.Read
         {
             var uiJsonObj = new Dictionary<string, object>
             {
-                {"ui:order", new []
                 {
-                    "PollingInterval"
-                }}
+                    "ui:order", new[]
+                    {
+                        "PollingInterval",
+                        "TableInformation"
+                    }
+                },
+                {
+                    "TableInformation", new[]
+                    {
+                        "TargetJournalLibrary",
+                        "TargetJournalName",
+                        "TargetTableLibrary",
+                        "TargetTableName"
+                    }
+                }
             };
 
             return JsonConvert.SerializeObject(uiJsonObj);

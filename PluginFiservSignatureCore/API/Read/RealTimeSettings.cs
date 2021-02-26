@@ -8,10 +8,10 @@ namespace PluginFiservSignatureCore.API.Read
         public List<JournalInfo> TableInformation {get; set; } = new List<JournalInfo>();
 
         public class JournalInfo {
-            public string ConnectionName {get; set;} = "";
-            public string JournalName {get; set;} = "";
             public string TargetJournalLibrary {get; set;} = "";
-            public string TargetTable {get; set;} = "";
+            public string TargetJournalName {get; set;} = "";
+            public string TargetTableLibrary {get; set;} = "";
+            public string TargetTableName {get; set;} = "";
         };
     }
 }

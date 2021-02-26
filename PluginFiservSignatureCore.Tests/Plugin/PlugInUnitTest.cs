@@ -352,10 +352,10 @@ namespace PluginFiservSignatureCore.Plugin
                     {
                         new RealTimeSettings.JournalInfo
                         {
-                            ConnectionName= "HLDQRY001",
-                            JournalName= "KPCBT11101",
-                            TargetJournalLibrary = "BNKPRD01",
-                            TargetTable ="TAP00201"
+                            TargetJournalLibrary= "HLDQRY001",
+                            TargetJournalName= "KPCBT11101",
+                            TargetTableLibrary = "BNKPRD01",
+                            TargetTableName ="TAP00201"
                         }
                     }
             };
