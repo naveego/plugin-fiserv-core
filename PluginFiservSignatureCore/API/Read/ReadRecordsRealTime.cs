@@ -81,7 +81,7 @@ namespace PluginFiservSignatureCore.API.Read
                                 var tableShortNameArray = tableMatch[0].Value.Split(' ');
                                 var tableShortName = tableShortNameArray[1];
 
-                                string wherePattern = @"\s[wW][hH][eE][rR][eE]\s[a-zA-Z0-9.]*\s\Z"; 
+                                string wherePattern = @"\s[wW][hH][eE][rR][eE]\s[a-zA-Z0-9.\s=><'""]*\Z";
                                 Regex whereReg = new Regex(wherePattern); 
                                 MatchCollection whereMatch = whereReg.Matches(request.Schema.Query);
                                 
