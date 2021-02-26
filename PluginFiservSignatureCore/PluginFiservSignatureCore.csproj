@@ -25,14 +25,6 @@
         <Manifest Include="$(MSBuildProjectDirectory)/../manifest.json" />
     </ItemGroup>
 
-    <ItemGroup>
-      <Compile Remove="API\Read\GetSchemaJson.cs" />
-      <Compile Remove="API\Read\RealTimeState.cs" />
-      <Compile Remove="API\Read\RealTimeSettings.cs" />
-      <Compile Remove="API\Read\ReadRecordsRealTimeAsync.cs" />
-      <Compile Remove="API\Read\GetUIJson.cs" />
-    </ItemGroup>
-
     <Target Name="ZipWindows" AfterTargets="Publish" Condition="$(Configuration) == 'Release' And Exists('$(MSBuildProjectDirectory)\bin\Release\netcoreapp3.1\win-x64\publish')">
         <Copy SourceFiles="@(Icon)" DestinationFolder="$(MSBuildProjectDirectory)\bin\Release\netcoreapp3.1\win-x64\publish" />
         <Copy SourceFiles="@(Manifest)" DestinationFolder="$(MSBuildProjectDirectory)\bin\Release\netcoreapp3.1\win-x64\publish" />
