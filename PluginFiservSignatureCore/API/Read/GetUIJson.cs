@@ -17,12 +17,16 @@ namespace PluginFiservSignatureCore.API.Read
                     }
                 },
                 {
-                    "TableInformation", new[]
-                    {
-                        "TargetJournalLibrary",
-                        "TargetJournalName",
-                        "TargetTableLibrary",
-                        "TargetTableName"
+                    "TableInformation", new Dictionary<string,object>{
+                        {
+                            "ui:order", new[]
+                            {
+                                "TargetJournalLibrary",
+                                "TargetJournalName",
+                                "TargetTableLibrary",
+                                "TargetTableName"
+                            }
+                        }
                     }
                 }
             };

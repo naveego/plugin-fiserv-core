@@ -22,7 +22,7 @@ namespace PluginFiservSignatureCore.API.Read
                     {"TableInformation", new Dictionary<string, object>
                     {
                         {"type", "array"},
-                        {"title", "TableInformation"},
+                        {"title", "Table Information"},
                         {"description", "Information about the tables to monitor for changes."},
                         {"items", new Dictionary<string, object>
                         {
