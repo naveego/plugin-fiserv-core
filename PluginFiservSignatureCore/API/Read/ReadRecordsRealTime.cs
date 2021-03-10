@@ -13,7 +13,7 @@ namespace PluginFiservSignatureCore.API.Read
     public static partial class Read
     {
         private static readonly string journalQuery =
-            @"SELECT JOCTRR, JOLIB, JOMBR, JOSEQN FROM {0}.{1} WHERE JOSEQN > {2} AND JOLIB = {3} AND JOMBR = {4}";
+            @"SELECT JOCTRR, JOLIB, JOMBR, JOSEQN, JOENTT FROM {0}.{1} WHERE JOSEQN > {2} AND JOLIB = '{3}' AND JOMBR = '{4}'";
 
         private static readonly string rrnQuery = @"{0} {1} RRN({2}) = {3}";
 
@@ -25,6 +25,7 @@ namespace PluginFiservSignatureCore.API.Read
 
             var schema = request.Schema;
             var jobVersion = request.DataVersions.JobDataVersion;
+            var shapeVersion = request.DataVersions.ShapeDataVersion;
             var recordsCount = 0;
             var conn = connFactory.GetConnection();
             await conn.OpenAsync();
@@ -37,24 +38,38 @@ namespace PluginFiservSignatureCore.API.Read
                     ? JsonConvert.DeserializeObject<RealTimeState>(request.RealTimeStateJson)
                     : new RealTimeState();
 
-                if (jobVersion > realTimeState.JobVersion)
+                // check to see if we need to load all the data
+                if (jobVersion > realTimeState.JobVersion || shapeVersion > realTimeState.ShapeVersion)
                 {
-                    realTimeState.LastReadTime = DateTime.MinValue;
+                    // Read all records for query
+                    var records = Read.ReadRecords(connFactory, schema);
+
+                    await foreach (var record in records)
+                    {
+                        // publish record
+                        await responseStream.WriteAsync(record);
+                        recordsCount++;
+                    }
+
+                    realTimeState.JobVersion = jobVersion;
+                    realTimeState.ShapeVersion = shapeVersion;
                 }
 
                 Logger.Info("Real time read initialized.");
 
                 while (!context.CancellationToken.IsCancellationRequested)
                 {
+                    var maxSequenceNumber = realTimeState.LastJournalEntryId;
+                    
+                    Logger.Debug($"Getting all records after sequence {realTimeState.LastJournalEntryId}");
+                    
+                    // get all changes for each table since last sequence number
                     foreach (var table in realTimeSettings.TableInformation)
                     {
+                        // get all changes for table since last sequence number
                         var cmd = connFactory.GetCommand(string.Format(journalQuery, table.TargetJournalLibrary,
                             table.TargetJournalName, realTimeState.LastJournalEntryId,
                             table.TargetTableLibrary, table.TargetTableName), conn);
-
-                        long currentRunRecordsCount = 0;
-                        Logger.Debug($"Getting all records since {realTimeState.LastReadTime.ToUniversalTime():O}");
-
 
                         IReader reader;
                         try
@@ -67,6 +82,7 @@ namespace PluginFiservSignatureCore.API.Read
                             break;
                         }
 
+                        // check for changes to process
                         if (reader.HasRows())
                         {
                             while (await reader.ReadAsync())
@@ -74,123 +90,130 @@ namespace PluginFiservSignatureCore.API.Read
                                 var connectionString = reader.GetValueById("JOLIB", '"').ToString();
                                 var tableName = reader.GetValueById("JOMBR", '"').ToString();
                                 var rowNumber = reader.GetValueById("JOCTRR", '"').ToString();
-                                var LastJournalEntryId = reader.GetValueById("JOSEQN", '"').ToString();
+                                var lastJournalEntryId = reader.GetValueById("JOSEQN", '"').ToString();
+                                var deleteFlag = reader.GetValueById("JOENTT", '"').ToString() == "DL";
 
-                                string tablePattern = connectionString + "." + tableName + @"\s[a-zA-Z0-9]*";
-                                Regex tableReg = new Regex(tablePattern);
-                                MatchCollection tableMatch = tableReg.Matches(request.Schema.Query);
-                                var tableShortNameArray = tableMatch[0].Value.Split(' ');
-                                var tableShortName = tableShortNameArray[1];
-
-                                string wherePattern = @"\s[wW][hH][eE][rR][eE]\s[a-zA-Z0-9.\s=><'""]*\Z";
-                                Regex whereReg = new Regex(wherePattern);
-                                MatchCollection whereMatch = whereReg.Matches(request.Schema.Query);
-
-                                var connRRN = connFactory.GetConnection();
-                                await connRRN.OpenAsync();
-                                var cmdRRN = connFactory.GetCommand("", connRRN);
-                                if (whereMatch.Count == 1)
+                                // update maximum sequence number
+                                if (Convert.ToInt64(lastJournalEntryId) > maxSequenceNumber)
                                 {
-                                    cmdRRN = connFactory.GetCommand(
-                                        string.Format(rrnQuery, request.Schema.Query, "AND", tableShortName, rowNumber),
-                                        connRRN);
+                                    maxSequenceNumber = Convert.ToInt64(lastJournalEntryId);
+                                }
+                                
+                                if (deleteFlag)
+                                {
+                                    // handle record deletion
+                                    // TODO: handle deleted records
+                                    var record = new Record
+                                    {
+                                        Action = Record.Types.Action.Delete,
+                                    };
+
+                                    await responseStream.WriteAsync(record);
+                                    recordsCount++;
                                 }
                                 else
                                 {
-                                    cmdRRN = connFactory.GetCommand(
-                                        string.Format(rrnQuery, request.Schema.Query, "WHERE", tableShortName,
-                                            rowNumber), connRRN);
-                                }
+                                    // handle reading changed records
+                                    string tablePattern = connectionString + "." + tableName + @"\s[a-zA-Z0-9]*";
+                                    Regex tableReg = new Regex(tablePattern);
+                                    MatchCollection tableMatch = tableReg.Matches(request.Schema.Query);
+                                    var tableShortNameArray = tableMatch[0].Value.Split(' ');
+                                    var tableShortName = tableShortNameArray[1];
 
-                                // read actual row
-                                IReader readerRRN;
-                                try
-                                {
-                                    readerRRN = await cmdRRN.ExecuteReaderAsync();
+                                    string wherePattern = @"\s[wW][hH][eE][rR][eE]\s[a-zA-Z0-9.\s=><'""]*\Z";
+                                    Regex whereReg = new Regex(wherePattern);
+                                    MatchCollection whereMatch = whereReg.Matches(request.Schema.Query);
 
-                                    if (readerRRN.HasRows())
+                                    var connRRN = connFactory.GetConnection();
+                                    await connRRN.OpenAsync();
+                                    var cmdRRN = connFactory.GetCommand("", connRRN);
+                                    if (whereMatch.Count == 1)
                                     {
-                                        var recordMap = new Dictionary<string, object>();
+                                        cmdRRN = connFactory.GetCommand(
+                                            string.Format(rrnQuery, request.Schema.Query, "AND", tableShortName,
+                                                rowNumber),
+                                            connRRN);
+                                    }
+                                    else
+                                    {
+                                        cmdRRN = connFactory.GetCommand(
+                                            string.Format(rrnQuery, request.Schema.Query, "WHERE", tableShortName,
+                                                rowNumber), connRRN);
+                                    }
 
-                                        foreach (var property in schema.Properties)
+                                    // read actual row
+                                    IReader readerRRN;
+                                    try
+                                    {
+                                        readerRRN = await cmdRRN.ExecuteReaderAsync();
+
+                                        if (readerRRN.HasRows())
                                         {
-                                            try
+                                            var recordMap = new Dictionary<string, object>();
+
+                                            foreach (var property in schema.Properties)
                                             {
-                                                switch (property.Type)
+                                                try
                                                 {
-                                                    case PropertyType.String:
-                                                    case PropertyType.Text:
-                                                    case PropertyType.Decimal:
-                                                        recordMap[property.Id] =
-                                                            readerRRN.GetValueById(property.Id, '"').ToString();
-                                                        break;
-                                                    default:
-                                                        recordMap[property.Id] =
-                                                            readerRRN.GetValueById(property.Id, '"');
-                                                        break;
+                                                    switch (property.Type)
+                                                    {
+                                                        case PropertyType.String:
+                                                        case PropertyType.Text:
+                                                        case PropertyType.Decimal:
+                                                            recordMap[property.Id] =
+                                                                readerRRN.GetValueById(property.Id, '"').ToString();
+                                                            break;
+                                                        default:
+                                                            recordMap[property.Id] =
+                                                                readerRRN.GetValueById(property.Id, '"');
+                                                            break;
+                                                    }
+                                                }
+                                                catch (Exception e)
+                                                {
+                                                    Logger.Error(e, $"No column with property Id: {property.Id}");
+                                                    Logger.Error(e, e.Message);
+                                                    recordMap[property.Id] = null;
                                                 }
                                             }
-                                            catch (Exception e)
+
+                                            var record = new Record
                                             {
-                                                Logger.Error(e, $"No column with property Id: {property.Id}");
-                                                Logger.Error(e, e.Message);
-                                                recordMap[property.Id] = null;
-                                            }
+                                                Action = Record.Types.Action.Upsert,
+                                                DataJson = JsonConvert.SerializeObject(recordMap)
+                                            };
+
+                                            await responseStream.WriteAsync(record);
+                                            recordsCount++;
                                         }
-
-                                        var record = new Record
-                                        {
-                                            Action = Record.Types.Action.Upsert,
-                                            DataJson = JsonConvert.SerializeObject(recordMap)
-                                        };
-
-                                        await responseStream.WriteAsync(record);
-                                        currentRunRecordsCount++;
-                                        recordsCount++;
                                     }
-                                }
-                                catch (Exception e)
-                                {
-                                    Logger.Error(e, e.Message);
-                                    break;
-                                }
-                                finally
-                                {
-                                    await connRRN.CloseAsync();
-                                }
-
-                                realTimeState.LastJournalEntryId = Convert.ToInt64(LastJournalEntryId);
-
-                                if (currentRunRecordsCount % 1000 == 0)
-                                {
-                                    realTimeState.LastReadTime = DateTime.Now;
-                                    realTimeState.JobVersion = jobVersion;
-
-                                    var realTimeStateCommit = new Record
+                                    catch (Exception e)
                                     {
-                                        Action = Record.Types.Action.RealTimeStateCommit,
-                                        RealTimeStateJson = JsonConvert.SerializeObject(realTimeState)
-                                    };
-                                    await responseStream.WriteAsync(realTimeStateCommit);
-
-                                    Logger.Debug(
-                                        $"Got {currentRunRecordsCount} records since {realTimeState.LastReadTime.ToUniversalTime():O}");
+                                        Logger.Error(e, e.Message);
+                                        break;
+                                    }
+                                    finally
+                                    {
+                                        await connRRN.CloseAsync();
+                                    }
                                 }
                             }
                         }
                     }
-
-                    realTimeState.LastReadTime = DateTime.Now;
+                    
+                    // commit state for last run
                     realTimeState.JobVersion = jobVersion;
+                    realTimeState.ShapeVersion = shapeVersion;
+                    realTimeState.LastJournalEntryId = maxSequenceNumber;
 
-                    var realTimeStateCommitFinal = new Record
+                    var realTimeStateCommit = new Record
                     {
                         Action = Record.Types.Action.RealTimeStateCommit,
                         RealTimeStateJson = JsonConvert.SerializeObject(realTimeState)
                     };
-                    await responseStream.WriteAsync(realTimeStateCommitFinal);
+                    await responseStream.WriteAsync(realTimeStateCommit);
 
-                    Logger.Debug($"Got {recordsCount} records since {realTimeState.LastReadTime.ToUniversalTime():O}");
+                    Logger.Debug($"Got all records up to sequence {realTimeState.LastJournalEntryId}");
 
                     await Task.Delay(realTimeSettings.PollingIntervalSeconds * (1000), context.CancellationToken);
                 }
