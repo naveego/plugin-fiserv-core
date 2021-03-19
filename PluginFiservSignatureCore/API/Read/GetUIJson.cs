@@ -17,7 +17,8 @@ namespace PluginFiservSignatureCore.API.Read
                     }
                 },
                 {
-                    "TableInformation", new Dictionary<string,object>{
+                    "TableInformation", new Dictionary<string,object>
+                    {
                         {
                             "ui:order", new[]
                             {
