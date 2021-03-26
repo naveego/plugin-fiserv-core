@@ -177,7 +177,7 @@ namespace PluginFiservSignatureCore.Plugin
             Logger.SetLogPrefix("discover");
             Logger.Info("Discovering Schemas...");
 
-            var sampleSize = checked((int)request.SampleSize);
+            var sampleSize = checked((int) request.SampleSize);
 
             DiscoverSchemasResponse discoverSchemasResponse = new DiscoverSchemasResponse();
 
@@ -232,7 +232,8 @@ namespace PluginFiservSignatureCore.Plugin
         /// <param name="request"></param>
         /// <param name="context"></param>
         /// <returns></returns>
-        public override Task<ConfigureRealTimeResponse> ConfigureRealTime(ConfigureRealTimeRequest request, ServerCallContext context)
+        public override Task<ConfigureRealTimeResponse> ConfigureRealTime(ConfigureRealTimeRequest request,
+            ServerCallContext context)
         {
             Logger.Info("Configuring real time...");
 
@@ -293,7 +294,8 @@ namespace PluginFiservSignatureCore.Plugin
 
                 if (!string.IsNullOrWhiteSpace(request.RealTimeSettingsJson))
                 {
-                    recordsCount = await Read.ReadRecordsRealTimeAsync(_connectionFactory, request, responseStream, context);
+                    recordsCount = await Read.ReadRecordsRealTimeAsync(_connectionFactory, request, responseStream,
+                        context, _server.Config.PermanentDirectory);
                 }
                 else
                 {
@@ -311,8 +313,8 @@ namespace PluginFiservSignatureCore.Plugin
                         await responseStream.WriteAsync(record);
                         recordsCount++;
                     }
-
                 }
+
                 Logger.Info($"Published {recordsCount} records");
             }
             catch (TaskCanceledException e)
@@ -389,7 +391,7 @@ namespace PluginFiservSignatureCore.Plugin
                     Form = new ConfigurationFormResponse
                     {
                         DataJson = request.Form.DataJson,
-                        Errors = { e.Message },
+                        Errors = {e.Message},
                         SchemaJson = schemaJson,
                         UiJson = uiJson,
                         StateJson = request.Form.StateJson
@@ -431,7 +433,7 @@ namespace PluginFiservSignatureCore.Plugin
                     Form = new ConfigurationFormResponse
                     {
                         DataJson = request.Form.DataJson,
-                        Errors = { errors },
+                        Errors = {errors},
                         SchemaJson = schemaJson,
                         UiJson = uiJson,
                         StateJson = request.Form.StateJson
@@ -446,7 +448,7 @@ namespace PluginFiservSignatureCore.Plugin
                     Form = new ConfigurationFormResponse
                     {
                         DataJson = request.Form.DataJson,
-                        Errors = { e.Message },
+                        Errors = {e.Message},
                         SchemaJson = schemaJson,
                         UiJson = uiJson,
                         StateJson = request.Form.StateJson
@@ -514,7 +516,7 @@ namespace PluginFiservSignatureCore.Plugin
             try
             {
                 Logger.Info("Writing records to Fiserv Signature Core...");
-            
+
                 var schema = _server.WriteSettings.Schema;
                 var inCount = 0;
 
@@ -530,13 +532,16 @@ namespace PluginFiservSignatureCore.Plugin
                     if (_server.WriteSettings.IsReplication())
                     {
                         var config =
-                            JsonConvert.DeserializeObject<ConfigureReplicationFormData>(_server.WriteSettings.Replication
+                            JsonConvert.DeserializeObject<ConfigureReplicationFormData>(_server.WriteSettings
+                                .Replication
                                 .SettingsJson);
 
                         // send record to source system
                         // add await for unit testing 
                         // removed to allow multiple to run at the same time
-                        await Task.Run(async () => await Replication.WriteRecord(_connectionFactory, schema, record, config, responseStream), context.CancellationToken);
+                        await Task.Run(
+                            async () => await Replication.WriteRecord(_connectionFactory, schema, record, config,
+                                responseStream), context.CancellationToken);
                     }
                     else
                     {
@@ -548,7 +553,7 @@ namespace PluginFiservSignatureCore.Plugin
                             context.CancellationToken);
                     }
                 }
-            
+
                 Logger.Info($"Wrote {inCount} records to Fiserv Signature Core.");
             }
             catch (Exception e)
