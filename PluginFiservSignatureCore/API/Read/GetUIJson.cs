@@ -25,7 +25,8 @@ namespace PluginFiservSignatureCore.API.Read
                                 "TargetJournalLibrary",
                                 "TargetJournalName",
                                 "TargetTableLibrary",
-                                "TargetTableName"
+                                "TargetTableName",
+                                "TargetTableAlias"
                             }
                         }
                     }

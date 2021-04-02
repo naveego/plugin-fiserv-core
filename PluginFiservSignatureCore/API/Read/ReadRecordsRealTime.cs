@@ -21,12 +21,12 @@ namespace PluginFiservSignatureCore.API.Read
 
         private static readonly string MaxSeqQuery = @"select MAX(JOSEQN) as MAX_JOSEQN FROM {0}.{1}";
 
-        private static readonly string RrnQuery = @"{0} {1} RRN({2}.{3}) = {4}";
+        private static readonly string RrnQuery = @"{0} {1} RRN({2}) = {3}";
 
         private const string CollectionName = "realtimerecord";
 
         public static bool useTestQuery = false;
-        private static readonly string rrnTestQuery = @"{0} {1} {2}.{3}.RRN = {4}";
+        // private static readonly string rrnTestQuery = @"{0} {1} {2}.{3}.RRN = {4}";
 
         public class RealTimeRecord
         {
@@ -309,16 +309,14 @@ namespace PluginFiservSignatureCore.API.Read
                                         if (whereMatch.Count == 1)
                                         {
                                             cmdRrn = connFactory.GetCommand(
-                                                string.Format(RrnQuery, request.Schema.Query, "AND", libraryName,
-                                                    tableName,
+                                                string.Format(RrnQuery, request.Schema.Query, "AND", table.GetTargetTableName(),
                                                     relativeRecordNumber),
                                                 conn);
                                         }
                                         else
                                         {
                                             cmdRrn = connFactory.GetCommand(
-                                                string.Format(RrnQuery, request.Schema.Query, "WHERE", libraryName,
-                                                    tableName,
+                                                string.Format(RrnQuery, request.Schema.Query, "WHERE", table.GetTargetTableName(),
                                                     relativeRecordNumber), conn);
                                         }
 

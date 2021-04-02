@@ -53,6 +53,12 @@ namespace PluginFiservSignatureCore.API.Read
                                     {"title", "Target Table Name"},
                                     {"description", "The name of the table file being monitored for changes."},
                                 }},
+                                {"TargetTableAlias", new Dictionary<string, string>
+                                {
+                                    {"type", "string"},
+                                    {"title", "Target Table Alias"},
+                                    {"description", "The alias of the table file as defined in the query being monitored for changes."},
+                                }},
                             }},
                             {"required", new []
                             {

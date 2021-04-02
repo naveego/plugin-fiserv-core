@@ -12,6 +12,7 @@ namespace PluginFiservSignatureCore.API.Read
             public string TargetJournalName {get; set;} = "";
             public string TargetTableLibrary {get; set;} = "";
             public string TargetTableName {get; set;} = "";
+            public string TargetTableAlias { get; set; } = "";
 
             public string GetTargetJournalAlias()
             {
@@ -25,6 +26,11 @@ namespace PluginFiservSignatureCore.API.Read
             
             public string GetTargetTableName()
             {
+                if (!string.IsNullOrWhiteSpace(TargetTableAlias))
+                {
+                    return TargetTableAlias;
+                }
+                
                 return $"{TargetTableLibrary}.{TargetTableName}";
             }
         };
