@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 using System.Threading.Tasks;
+using Naveego.Sdk.Logging;
 using Newtonsoft.Json;
 using PluginFiservSignatureCore.API.Factory;
 using PluginFiservSignatureCore.DataContracts;

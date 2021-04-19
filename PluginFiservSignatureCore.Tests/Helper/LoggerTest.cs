@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using Naveego.Sdk.Logging;
 using Naveego.Sdk.Plugins;
 using PluginFiservSignatureCore.Helper;
 using Xunit;

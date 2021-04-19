@@ -11,6 +11,7 @@ using Newtonsoft.Json;
 using PluginFiservSignatureCore.API.Factory;
 using PluginFiservSignatureCore.Helper;
 using LiteDB;
+using Naveego.Sdk.Logging;
 
 namespace PluginFiservSignatureCore.API.Read
 {
@@ -30,10 +31,8 @@ namespace PluginFiservSignatureCore.API.Read
 
         public class RealTimeRecord
         {
-            [BsonId]
-            public string Id { get; set; }
-            [BsonField]
-            public Dictionary<string, object> Data { get; set; }
+            [BsonId] public string Id { get; set; }
+            [BsonField] public Dictionary<string, object> Data { get; set; }
         }
 
         public static async Task<long> ReadRecordsRealTimeAsync(IConnectionFactory connFactory, ReadRequest request,
@@ -136,6 +135,7 @@ namespace PluginFiservSignatureCore.API.Read
                                                     recordKeysMap[property.Id] =
                                                         readerRealTime.GetValueById(property.Id, '"').ToString();
                                                 }
+
                                                 break;
                                             default:
                                                 recordMap[property.Id] =
@@ -145,6 +145,7 @@ namespace PluginFiservSignatureCore.API.Read
                                                     recordKeysMap[property.Id] =
                                                         readerRealTime.GetValueById(property.Id, '"');
                                                 }
+
                                                 break;
                                         }
                                     }
@@ -260,6 +261,9 @@ namespace PluginFiservSignatureCore.API.Read
                             // check for changes to process
                             if (reader.HasRows())
                             {
+                                Logger.Debug(
+                                    $"Found changes to records after sequence {table.GetTargetJournalAlias()} {realTimeState.LastJournalEntryIdMap[table.GetTargetJournalAlias()]}");
+
                                 while (await reader.ReadAsync())
                                 {
                                     var libraryName = reader.GetValueById("JOLIB", '"').ToString();
@@ -279,9 +283,11 @@ namespace PluginFiservSignatureCore.API.Read
 
                                     if (deleteFlag)
                                     {
+                                        Logger.Info($"Deleting record {recordId}");
+
                                         // handle record deletion
                                         var realtimeRecord =
-                                            realtimeRecordsCollection.FindOne( r => r.Id == recordId);
+                                            realtimeRecordsCollection.FindOne(r => r.Id == recordId);
                                         if (realtimeRecord == null)
                                         {
                                             continue;
@@ -301,22 +307,26 @@ namespace PluginFiservSignatureCore.API.Read
                                     }
                                     else
                                     {
+                                        Logger.Info($"Upserting record {recordId}");
+
                                         var wherePattern = @"\s[wW][hH][eE][rR][eE]\s[a-zA-Z0-9.\s=><'""]*\Z";
                                         var whereReg = new Regex(wherePattern);
                                         var whereMatch = whereReg.Matches(request.Schema.Query);
-                                        
+
                                         ICommand cmdRrn;
                                         if (whereMatch.Count == 1)
                                         {
                                             cmdRrn = connFactory.GetCommand(
-                                                string.Format(RrnQuery, request.Schema.Query, "AND", table.GetTargetTableName(),
+                                                string.Format(RrnQuery, request.Schema.Query, "AND",
+                                                    table.GetTargetTableName(),
                                                     relativeRecordNumber),
                                                 conn);
                                         }
                                         else
                                         {
                                             cmdRrn = connFactory.GetCommand(
-                                                string.Format(RrnQuery, request.Schema.Query, "WHERE", table.GetTargetTableName(),
+                                                string.Format(RrnQuery, request.Schema.Query, "WHERE",
+                                                    table.GetTargetTableName(),
                                                     relativeRecordNumber), conn);
                                         }
 
@@ -330,61 +340,66 @@ namespace PluginFiservSignatureCore.API.Read
                                                 while (await readerRrn.ReadAsync())
                                                 {
                                                     var recordMap = new Dictionary<string, object>();
-                                                var recordKeysMap = new Dictionary<string, object>();
-                                                foreach (var property in schema.Properties)
-                                                {
-                                                    try
+                                                    var recordKeysMap = new Dictionary<string, object>();
+                                                    foreach (var property in schema.Properties)
                                                     {
-                                                        switch (property.Type)
+                                                        try
                                                         {
-                                                            case PropertyType.String:
-                                                            case PropertyType.Text:
-                                                            case PropertyType.Decimal:
-                                                                recordMap[property.Id] =
-                                                                    readerRrn.GetValueById(property.Id, '"').ToString();
-                                                                if (property.IsKey)
-                                                                {
-                                                                    recordKeysMap[property.Id] =
-                                                                        readerRrn.GetValueById(property.Id, '"').ToString();
-                                                                }
-                                                                break;
-                                                            default:
-                                                                recordMap[property.Id] =
-                                                                    readerRrn.GetValueById(property.Id, '"');
-                                                                if (property.IsKey)
-                                                                {
-                                                                    recordKeysMap[property.Id] =
+                                                            switch (property.Type)
+                                                            {
+                                                                case PropertyType.String:
+                                                                case PropertyType.Text:
+                                                                case PropertyType.Decimal:
+                                                                    recordMap[property.Id] =
+                                                                        readerRrn.GetValueById(property.Id, '"')
+                                                                            .ToString();
+                                                                    if (property.IsKey)
+                                                                    {
+                                                                        recordKeysMap[property.Id] =
+                                                                            readerRrn.GetValueById(property.Id, '"')
+                                                                                .ToString();
+                                                                    }
+
+                                                                    break;
+                                                                default:
+                                                                    recordMap[property.Id] =
                                                                         readerRrn.GetValueById(property.Id, '"');
-                                                                }
-                                                                break;
+                                                                    if (property.IsKey)
+                                                                    {
+                                                                        recordKeysMap[property.Id] =
+                                                                            readerRrn.GetValueById(property.Id, '"');
+                                                                    }
+
+                                                                    break;
+                                                            }
+
+                                                            // update local db
+                                                            var realTimeRecord = new RealTimeRecord
+                                                            {
+                                                                Id = recordId,
+                                                                Data = recordKeysMap
+                                                            };
+
+                                                            // upsert record into db
+                                                            realtimeRecordsCollection.Upsert(realTimeRecord);
                                                         }
-                                                        
-                                                        // update local db
-                                                        var realTimeRecord = new RealTimeRecord
+                                                        catch (Exception e)
                                                         {
-                                                            Id = recordId,
-                                                            Data = recordKeysMap
-                                                        };
-
-                                                        // upsert record into db
-                                                        realtimeRecordsCollection.Upsert(realTimeRecord);
+                                                            Logger.Error(e,
+                                                                $"No column with property Id: {property.Id}");
+                                                            Logger.Error(e, e.Message);
+                                                            recordMap[property.Id] = null;
+                                                        }
                                                     }
-                                                    catch (Exception e)
+
+                                                    var record = new Record
                                                     {
-                                                        Logger.Error(e, $"No column with property Id: {property.Id}");
-                                                        Logger.Error(e, e.Message);
-                                                        recordMap[property.Id] = null;
-                                                    }
-                                                }
+                                                        Action = Record.Types.Action.Upsert,
+                                                        DataJson = JsonConvert.SerializeObject(recordMap)
+                                                    };
 
-                                                var record = new Record
-                                                {
-                                                    Action = Record.Types.Action.Upsert,
-                                                    DataJson = JsonConvert.SerializeObject(recordMap)
-                                                };
-
-                                                await responseStream.WriteAsync(record);
-                                                recordsCount++;
+                                                    await responseStream.WriteAsync(record);
+                                                    recordsCount++;
                                                 }
                                             }
                                         }
@@ -410,7 +425,7 @@ namespace PluginFiservSignatureCore.API.Read
                         };
                         await responseStream.WriteAsync(realTimeStateCommit);
 
-                        Logger.Debug(
+                        Logger.Info(
                             $"Got all records up to sequence {JsonConvert.SerializeObject(realTimeState.LastJournalEntryIdMap, Formatting.Indented)}");
 
                         await Task.Delay(realTimeSettings.PollingIntervalSeconds * (1000), context.CancellationToken);

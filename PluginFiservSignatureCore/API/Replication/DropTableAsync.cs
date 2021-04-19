@@ -1,5 +1,6 @@
 using System;
 using System.Threading.Tasks;
+using Naveego.Sdk.Logging;
 using PluginFiservSignatureCore.API.Factory;
 using PluginFiservSignatureCore.DataContracts;
 using PluginFiservSignatureCore.Helper;
