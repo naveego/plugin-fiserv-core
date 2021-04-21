@@ -18,11 +18,21 @@ namespace PluginFiservSignatureCore.API.Factory
 
         public async Task OpenAsync()
         {
+            if ((_conn.State & ConnectionState.Open) != 0)
+            {
+                return;
+            }
+            
             await _conn.OpenAsync();
         }
 
         public async Task CloseAsync()
         {
+            if (_conn.State == ConnectionState.Closed)
+            {
+                return;
+            }
+            
             await _conn.CloseAsync();
         }
 

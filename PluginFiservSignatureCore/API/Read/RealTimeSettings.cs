@@ -19,12 +19,12 @@ namespace PluginFiservSignatureCore.API.Read
                 return $"{TargetJournalLibrary}_{TargetJournalName}";
             }
             
-            public string GetTargetTableAlias()
+            public string GetTargetTableName()
             {
                 return $"{TargetTableLibrary}_{TargetTableName}";
             }
             
-            public string GetTargetTableName()
+            public string GetTargetTableAlias()
             {
                 if (!string.IsNullOrWhiteSpace(TargetTableAlias))
                 {

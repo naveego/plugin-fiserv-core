@@ -74,8 +74,8 @@ namespace PluginFiservSignatureCore.API.Read
                         var rrnSelect = new StringBuilder();
                         foreach (var table in realTimeSettings.TableInformation)
                         {
-                            rrnKeys.Add(table.GetTargetTableAlias());
-                            rrnSelect.Append($",RRN({table.GetTargetTableName()}) as {table.GetTargetTableAlias()}");
+                            rrnKeys.Add(table.GetTargetTableName());
+                            rrnSelect.Append($",RRN({table.GetTargetTableAlias()}) as {table.GetTargetTableName()}");
                         }
 
                         // check for UNIONS
@@ -235,6 +235,8 @@ namespace PluginFiservSignatureCore.API.Read
                         Logger.Debug(
                             $"Getting all records after sequence {JsonConvert.SerializeObject(realTimeState.LastJournalEntryIdMap, Formatting.Indented)}");
 
+                        await conn.OpenAsync();
+                        
                         // get all changes for each table since last sequence number
                         foreach (var table in realTimeSettings.TableInformation)
                         {
@@ -309,7 +311,7 @@ namespace PluginFiservSignatureCore.API.Read
                                     {
                                         Logger.Info($"Upserting record {recordId}");
 
-                                        var wherePattern = @"\s[wW][hH][eE][rR][eE]\s[a-zA-Z0-9.\s=><'""]*\Z";
+                                        var wherePattern = @"\s[^[]?[wW][hH][eE][rR][eE][^]]?\s";
                                         var whereReg = new Regex(wherePattern);
                                         var whereMatch = whereReg.Matches(request.Schema.Query);
 
@@ -318,7 +320,7 @@ namespace PluginFiservSignatureCore.API.Read
                                         {
                                             cmdRrn = connFactory.GetCommand(
                                                 string.Format(RrnQuery, request.Schema.Query, "AND",
-                                                    table.GetTargetTableName(),
+                                                    table.GetTargetTableAlias(),
                                                     relativeRecordNumber),
                                                 conn);
                                         }
@@ -326,7 +328,7 @@ namespace PluginFiservSignatureCore.API.Read
                                         {
                                             cmdRrn = connFactory.GetCommand(
                                                 string.Format(RrnQuery, request.Schema.Query, "WHERE",
-                                                    table.GetTargetTableName(),
+                                                    table.GetTargetTableAlias(),
                                                     relativeRecordNumber), conn);
                                         }
 
