@@ -410,10 +410,6 @@ namespace PluginFiservSignatureCore.API.Read
                                             Logger.Error(e, e.Message);
                                             break;
                                         }
-                                        finally
-                                        {
-                                            // await connRrn.CloseAsync();
-                                        }
                                     }
                                 }
                             }
