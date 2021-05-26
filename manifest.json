@@ -33,9 +33,28 @@
   },
   "configSchema": {
     "ui": {
-      "ui:order": ["ConnectionString", "Password"],
+      "ui:order": [
+        "ConnectionString",
+        "Password",
+        "LightSync",
+        "SingleRealTimeSettings"
+      ],
       "Password": {
         "ui:widget": "password"
+      },
+      "SingleRealTimeSettings": {
+        "ui:order": [
+          "TableInformation"
+        ],
+        "TableInformation": {
+          "ui:order": [
+            "TargetJournalLibrary",
+            "TargetJournalName",
+            "TargetTableLibrary",
+            "TargetTableName",
+            "TargetTableAlias"
+          ]
+        }
       }
     },
     "schema": {
@@ -50,9 +69,67 @@
           "type": "string",
           "title": "Password",
           "description": "(Optional) The secret of your connection string. Will replace PASSWORD in the connection string."
+        },
+        "LightSync": {
+          "type": "boolean",
+          "title": "Light Sync",
+          "description": "Enable automatic sync of deleted records ever 30 minutes for real time reads."
+        },
+        "SingleRealTimeSettings": {
+          "type": "object",
+          "title": "Singe Run Real Time Settings",
+          "description": "Configuration for running single read operations with real time capabilities. When omitted reads will not leverage real time features.",
+          "properties": {
+            "TableInformation": {
+              "type": "array",
+              "title": "Table Information",
+              "description": "Information about the tables to monitor for changes.",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "TargetJournalLibrary": {
+                    "type": "string",
+                    "title": "Target Journal Library",
+                    "description": "The name of the library the target journal file is in."
+                  },
+                  "TargetJournalName": {
+                    "type": "string",
+                    "title": "Target Journal Name",
+                    "description": "The name of the Journal file to query for changes."
+                  },
+                  "TargetTableLibrary": {
+                    "type": "string",
+                    "title": "Target Table Library",
+                    "description": "The name of the library the target table file is in."
+                  },
+                  "TargetTableName": {
+                    "type": "string",
+                    "title": "Target Table Name",
+                    "description": "The name of the table file being monitored for changes."
+                  },
+                  "TargetTableAlias": {
+                    "type": "string",
+                    "title": "Target Table Alias",
+                    "description": "The alias of the table file as defined in the query being monitored for changes."
+                  }
+                },
+                "required": [
+                  "TargetJournalLibrary",
+                  "TargetJournalName",
+                  "TargetTableLibrary",
+                  "TargetTableName"
+                ]
+              }
+            }
+          },
+          "required": [
+            "TableInformation"
+          ]
         }
       },
-      "required": ["ConnectionString"]
+      "required": [
+        "ConnectionString"
+      ]
     }
   }
 }

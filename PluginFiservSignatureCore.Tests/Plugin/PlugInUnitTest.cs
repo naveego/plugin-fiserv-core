@@ -1005,6 +1005,47 @@ FROM BNKPRD95.CFP10201",
             await channel.ShutdownAsync();
             await server.ShutdownAsync();
         }
+        
+        [Fact]
+        public async Task ConfigureRealTimeTest()
+        {
+            // setup
+            Server server = new Server
+            {
+                Services = {Publisher.BindService(new PluginFiservSignatureCore.Plugin.Plugin(GetMockConnectionFactory()))},
+                Ports = {new ServerPort("localhost", 0, ServerCredentials.Insecure)}
+            };
+            server.Start();
+
+            var port = server.Ports.First().BoundPort;
+
+            var channel = new Channel($"localhost:{port}", ChannelCredentials.Insecure);
+            var client = new Publisher.PublisherClient(channel);
+
+            var connectRequest = GetConnectSettings();
+
+            var firstRequest = new ConfigureRealTimeRequest()
+            {
+                Form = new ConfigurationFormRequest
+                {
+                    DataJson = "",
+                    StateJson = ""
+                }
+            };
+            
+
+            // act
+            client.Connect(connectRequest);
+            var firstResponse = client.ConfigureRealTime(firstRequest);
+            
+
+            // assert
+
+
+            // cleanup
+            await channel.ShutdownAsync();
+            await server.ShutdownAsync();
+        }
 
         [Fact]
         public async Task ConfigureWriteTest()
