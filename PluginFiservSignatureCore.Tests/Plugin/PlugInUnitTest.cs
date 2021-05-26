@@ -786,7 +786,7 @@ FROM BNKPRD95.CFP10201",
             }
             catch (Exception e)
             {
-                Assert.Equal("Status(StatusCode=Cancelled, Detail=\"Cancelled\")", e.Message);
+                Assert.Contains("Status(StatusCode=\"Cancelled\", Detail=\"Cancelled\",", e.Message);
             }
             
             // assert

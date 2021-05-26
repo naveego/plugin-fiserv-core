@@ -43,6 +43,10 @@ namespace PluginFiservSignatureCore.API.Read
         private static RealTimeState _realTimeState;
         private static RealTimeSettings _realTimeSettings;
         private static ReadRequest _request;
+        private static DateTime _lastLightSync = DateTime.Now;
+        private static ILiteCollection<RealTimeState> _realTimeStateCollection;
+        private static ILiteCollection<RealTimeRecord> _realTimeRecordsCollection;
+        private static ILiteCollection<RealTimeRecord> _tempCollection;
 
         public class RealTimeRecord
         {
@@ -77,17 +81,22 @@ namespace PluginFiservSignatureCore.API.Read
                 using (var db = new LiteDatabase(Path.Join(_path, "RealTimeReadRecords.db")))
                 {
                     // realtime state
-                    var realTimeStateCollection = db.GetCollection<RealTimeState>(RealTimeStateCollectionName);
-                    _realTimeState = realTimeStateCollection.FindOne(r => r.Id == $"{_jobVersion}_{_shapeVersion}") ??
+                    _realTimeStateCollection = db.GetCollection<RealTimeState>(RealTimeStateCollectionName);
+                    var realTimeStateId = $"{_jobVersion}_{_shapeVersion}";
+                    _realTimeState = _realTimeStateCollection.FindOne(r => r.Id == realTimeStateId) ??
                                      new RealTimeState(_jobVersion, _shapeVersion);
 
-                    var realTimeRecordsCollection = db.GetCollection<RealTimeRecord>(RealTimeRecordsCollectionName);
+                    _realTimeRecordsCollection = db.GetCollection<RealTimeRecord>(RealTimeRecordsCollectionName);
+
+                    _tempCollection = db.GetCollection<RealTimeRecord>(TempCollectionName);
+
                     Logger.Info("Real time read initializing...");
 
                     // check to see if we need to load all the data
                     if (_jobVersion > _realTimeState.JobVersion || _shapeVersion > _realTimeState.ShapeVersion)
                     {
-                        await PreLoadCollection(connectionFactory, responseStream, RealTimeRecordsCollectionName, true);
+                        await PreLoadCollection(connectionFactory, responseStream, _realTimeRecordsCollection, true,
+                            singleRead);
                     }
 
                     Logger.Info("Real time read initialized.");
@@ -153,13 +162,13 @@ namespace PluginFiservSignatureCore.API.Read
 
                                         // handle record deletion
                                         var realtimeRecord =
-                                            realTimeRecordsCollection.FindOne(r => r.Id == recordId);
+                                            _realTimeRecordsCollection.FindOne(r => r.Id == recordId);
                                         if (realtimeRecord == null)
                                         {
                                             continue;
                                         }
 
-                                        realTimeRecordsCollection.DeleteMany(r =>
+                                        _realTimeRecordsCollection.DeleteMany(r =>
                                             r.Id == recordId);
 
                                         var record = new Record
@@ -247,7 +256,7 @@ namespace PluginFiservSignatureCore.API.Read
                                                             };
 
                                                             // upsert record into db
-                                                            realTimeRecordsCollection.Upsert(realTimeRecord);
+                                                            _realTimeRecordsCollection.Upsert(realTimeRecord);
                                                         }
                                                         catch (Exception e)
                                                         {
@@ -280,41 +289,51 @@ namespace PluginFiservSignatureCore.API.Read
                         }
 
                         // commit state for last run
-                        // var _realTimeStateCommit = new Record
-                        // {
-                        //     Action = Record.Types.Action.RealTimeStateCommit,
-                        //     RealTimeStateJson = JsonConvert.SerializeObject(_realTimeState)
-                        // };
-                        // await responseStream.WriteAsync(_realTimeStateCommit);
-                        realTimeStateCollection.Upsert(_realTimeState);
+                        if (!singleRead)
+                        {
+                            var realTimeStateCommit = new Record
+                            {
+                                Action = Record.Types.Action.RealTimeStateCommit,
+                                RealTimeStateJson = JsonConvert.SerializeObject(_realTimeState)
+                            };
+                            await responseStream.WriteAsync(realTimeStateCommit);
+                        }
+
+                        _realTimeStateCollection.Upsert(_realTimeState);
 
                         Logger.Info(
                             $"Got all records up to sequence {JsonConvert.SerializeObject(_realTimeState.LastJournalEntryIdMap, Formatting.Indented)}");
 
                         // light sync deletes
-                        await PreLoadCollection(connectionFactory, responseStream, TempCollectionName, false);
-
-                        var tempRecordsCollection = db.GetCollection<RealTimeRecord>(TempCollectionName);
-
-                        foreach (var realTimeRecord in realTimeRecordsCollection.FindAll())
+                        if (lightSync && (DateTime.Compare(DateTime.Now, _lastLightSync.AddMinutes(30)) >= 0 ||
+                                          singleRead))
                         {
-                            if (tempRecordsCollection.FindById(realTimeRecord.Id) == null)
+                            _lastLightSync = DateTime.Now;
+                            await PreLoadCollection(connectionFactory, responseStream, _tempCollection, false,
+                                singleRead);
+
+                            var tempRecordsCollection = db.GetCollection<RealTimeRecord>(TempCollectionName);
+
+                            foreach (var realTimeRecord in _realTimeRecordsCollection.FindAll())
                             {
-                                // delete record
-                                Logger.Info($"Deleting record {realTimeRecord.Id}");
-
-                                // handle record deletion
-                                realTimeRecordsCollection.DeleteMany(r =>
-                                    r.Id == realTimeRecord.Id);
-
-                                var record = new Record
+                                if (tempRecordsCollection.FindById(realTimeRecord.Id) == null)
                                 {
-                                    Action = Record.Types.Action.Delete,
-                                    DataJson = JsonConvert.SerializeObject(realTimeRecord.Data)
-                                };
+                                    // delete record
+                                    Logger.Info($"Deleting record {realTimeRecord.Id}");
 
-                                await responseStream.WriteAsync(record);
-                                _recordsCount++;
+                                    // handle record deletion
+                                    _realTimeRecordsCollection.DeleteMany(r =>
+                                        r.Id == realTimeRecord.Id);
+
+                                    var record = new Record
+                                    {
+                                        Action = Record.Types.Action.Delete,
+                                        DataJson = JsonConvert.SerializeObject(realTimeRecord.Data)
+                                    };
+
+                                    await responseStream.WriteAsync(record);
+                                    _recordsCount++;
+                                }
                             }
                         }
 
@@ -347,184 +366,183 @@ namespace PluginFiservSignatureCore.API.Read
         }
 
         private static async Task PreLoadCollection(IConnectionFactory connFactory,
-            IServerStreamWriter<Record> responseStream, string collectionName, bool writeRecords)
+            IServerStreamWriter<Record> responseStream, ILiteCollection<RealTimeRecord> realTimeRecordsCollection,
+            bool writeRecords, bool singleRead)
         {
-            using (var db = new LiteDatabase(Path.Join(_path, "RealTimeReadRecords.db")))
+            // realtime state
+            var realTimeStateId = $"{_jobVersion}_{_shapeVersion}";
+            _realTimeState = _realTimeStateCollection.FindOne(r => r.Id == realTimeStateId) ??
+                             new RealTimeState(_jobVersion, _shapeVersion);
+
+            var rrnKeys = new List<string>();
+            var rrnSelect = new StringBuilder();
+            foreach (var table in _realTimeSettings.TableInformation)
             {
-                // realtime state
-                var realTimeStateCollection = db.GetCollection<RealTimeState>(RealTimeStateCollectionName);
-                _realTimeState = realTimeStateCollection.FindOne(r => r.Id == $"{_jobVersion}_{_shapeVersion}") ??
-                                 new RealTimeState(_jobVersion, _shapeVersion);
+                rrnKeys.Add(table.GetTargetTableName());
+                rrnSelect.Append($",RRN({table.GetTargetTableAlias()}) as {table.GetTargetTableName()}");
+            }
 
-                var realTimeRecordsCollection = db.GetCollection<RealTimeRecord>(collectionName);
-
-                var rrnKeys = new List<string>();
-                var rrnSelect = new StringBuilder();
-                foreach (var table in _realTimeSettings.TableInformation)
-                {
-                    rrnKeys.Add(table.GetTargetTableName());
-                    rrnSelect.Append($",RRN({table.GetTargetTableAlias()}) as {table.GetTargetTableName()}");
-                }
-
-                // check for UNIONS
-                var unionPattern = @"[Uu][Nn][Ii][Oo][Nn]";
-                var unionResult = Regex.Split(_request.Schema.Query, unionPattern);
-                var loadQuery = new StringBuilder();
-                if (unionResult.Length == 0)
+            // check for UNIONS
+            var unionPattern = @"[Uu][Nn][Ii][Oo][Nn]";
+            var unionResult = Regex.Split(_request.Schema.Query, unionPattern);
+            var loadQuery = new StringBuilder();
+            if (unionResult.Length == 0)
+            {
+                var fromPattern = @"[Ff][Rr][Oo][Mm]";
+                var fromResult = Regex.Split(_request.Schema.Query, fromPattern);
+                loadQuery.Append($"{fromResult[0]}{rrnSelect}\nFROM {fromResult[1]}");
+            }
+            else
+            {
+                var index = 0;
+                foreach (var union in unionResult)
                 {
                     var fromPattern = @"[Ff][Rr][Oo][Mm]";
-                    var fromResult = Regex.Split(_request.Schema.Query, fromPattern);
+                    var fromResult = Regex.Split(union, fromPattern);
                     loadQuery.Append($"{fromResult[0]}{rrnSelect}\nFROM {fromResult[1]}");
-                }
-                else
-                {
-                    var index = 0;
-                    foreach (var union in unionResult)
+                    index++;
+                    if (index != unionResult.Length)
                     {
-                        var fromPattern = @"[Ff][Rr][Oo][Mm]";
-                        var fromResult = Regex.Split(union, fromPattern);
-                        loadQuery.Append($"{fromResult[0]}{rrnSelect}\nFROM {fromResult[1]}");
-                        index++;
-                        if (index != unionResult.Length)
-                        {
-                            loadQuery.Append(" UNION ");
-                        }
+                        loadQuery.Append(" UNION ");
                     }
                 }
+            }
 
-                // delete existing collection
-                realTimeRecordsCollection.DeleteAll();
+            // delete existing collection
+            realTimeRecordsCollection.DeleteAll();
 
-                if (realTimeRecordsCollection.LongCount() == 0)
+            if (realTimeRecordsCollection.LongCount() == 0)
+            {
+                var cmd = connFactory.GetCommand(loadQuery.ToString(), _conn);
+
+                var readerRealTime = await cmd.ExecuteReaderAsync();
+
+                // check for changes to process
+                if (readerRealTime.HasRows())
                 {
-                    var cmd = connFactory.GetCommand(loadQuery.ToString(), _conn);
-
-                    var readerRealTime = await cmd.ExecuteReaderAsync();
-
-                    // check for changes to process
-                    if (readerRealTime.HasRows())
+                    while (await readerRealTime.ReadAsync())
                     {
-                        while (await readerRealTime.ReadAsync())
+                        // record map to send to response stream
+                        var recordMap = new Dictionary<string, object>();
+                        var recordKeysMap = new Dictionary<string, object>();
+                        foreach (var property in _schema.Properties)
                         {
-                            // record map to send to response stream
-                            var recordMap = new Dictionary<string, object>();
-                            var recordKeysMap = new Dictionary<string, object>();
-                            foreach (var property in _schema.Properties)
+                            try
                             {
-                                try
+                                switch (property.Type)
                                 {
-                                    switch (property.Type)
-                                    {
-                                        case PropertyType.String:
-                                        case PropertyType.Text:
-                                        case PropertyType.Decimal:
-                                            recordMap[property.Id] =
+                                    case PropertyType.String:
+                                    case PropertyType.Text:
+                                    case PropertyType.Decimal:
+                                        recordMap[property.Id] =
+                                            readerRealTime.GetValueById(property.Id, '"').ToString();
+                                        if (property.IsKey)
+                                        {
+                                            recordKeysMap[property.Id] =
                                                 readerRealTime.GetValueById(property.Id, '"').ToString();
-                                            if (property.IsKey)
-                                            {
-                                                recordKeysMap[property.Id] =
-                                                    readerRealTime.GetValueById(property.Id, '"').ToString();
-                                            }
+                                        }
 
-                                            break;
-                                        default:
-                                            recordMap[property.Id] =
+                                        break;
+                                    default:
+                                        recordMap[property.Id] =
+                                            readerRealTime.GetValueById(property.Id, '"');
+                                        if (property.IsKey)
+                                        {
+                                            recordKeysMap[property.Id] =
                                                 readerRealTime.GetValueById(property.Id, '"');
-                                            if (property.IsKey)
-                                            {
-                                                recordKeysMap[property.Id] =
-                                                    readerRealTime.GetValueById(property.Id, '"');
-                                            }
+                                        }
 
-                                            break;
-                                    }
-                                }
-                                catch (Exception e)
-                                {
-                                    Logger.Error(e, $"No column with property Id: {property.Id}");
-                                    Logger.Error(e, e.Message);
-                                    recordMap[property.Id] = null;
+                                        break;
                                 }
                             }
-
-                            // build local db entry
-                            foreach (var rrnKey in rrnKeys)
+                            catch (Exception e)
                             {
-                                try
-                                {
-                                    var rrn = readerRealTime.GetValueById(rrnKey, '"');
-
-                                    // Create new real time record
-                                    var realTimeRecord = new RealTimeRecord
-                                    {
-                                        Id = $"{rrnKey}_{rrn}",
-                                        Data = recordKeysMap
-                                    };
-
-                                    // Insert new record into db
-                                    realTimeRecordsCollection.Upsert(realTimeRecord);
-                                }
-                                catch (Exception e)
-                                {
-                                    Logger.Error(e, $"No column with property Id: {rrnKey}");
-                                    Logger.Error(e, e.Message);
-                                }
+                                Logger.Error(e, $"No column with property Id: {property.Id}");
+                                Logger.Error(e, e.Message);
+                                recordMap[property.Id] = null;
                             }
+                        }
 
-                            // Publish record
-                            if (writeRecords)
+                        // build local db entry
+                        foreach (var rrnKey in rrnKeys)
+                        {
+                            try
                             {
-                                var record = new Record
+                                var rrn = readerRealTime.GetValueById(rrnKey, '"');
+
+                                // Create new real time record
+                                var realTimeRecord = new RealTimeRecord
                                 {
-                                    Action = Record.Types.Action.Upsert,
-                                    DataJson = JsonConvert.SerializeObject(recordMap)
+                                    Id = $"{rrnKey}_{rrn}",
+                                    Data = recordKeysMap
                                 };
 
-                                await responseStream.WriteAsync(record);
+                                // Insert new record into db
+                                realTimeRecordsCollection.Upsert(realTimeRecord);
                             }
-
-                            _recordsCount++;
+                            catch (Exception e)
+                            {
+                                Logger.Error(e, $"No column with property Id: {rrnKey}");
+                                Logger.Error(e, e.Message);
+                            }
                         }
-                    }
 
-                    // get current max sequence numbers
-                    var maxSeqMap = _realTimeSettings.TableInformation
-                        .GroupBy(t => t.GetTargetJournalAlias())
-                        .ToDictionary(t => t.Key, x => (long) 0);
-
-                    foreach (var seqItem in maxSeqMap)
-                    {
-                        var idSplit = seqItem.Key.Split("_");
-                        var seqCmd = connFactory.GetCommand(string.Format(MaxSeqQuery, idSplit[0], idSplit[1]),
-                            _conn);
-
-                        var seqReader = await seqCmd.ExecuteReaderAsync();
-
-                        if (seqReader.HasRows())
+                        // Publish record
+                        if (writeRecords)
                         {
-                            await seqReader.ReadAsync();
-                            _realTimeState.LastJournalEntryIdMap[seqItem.Key] =
-                                Convert.ToInt64(seqReader.GetValueById("MAX_JOSEQN"));
+                            var record = new Record
+                            {
+                                Action = Record.Types.Action.Upsert,
+                                DataJson = JsonConvert.SerializeObject(recordMap)
+                            };
+
+                            await responseStream.WriteAsync(record);
                         }
+
+                        _recordsCount++;
                     }
                 }
 
+                // get current max sequence numbers
+                var maxSeqMap = _realTimeSettings.TableInformation
+                    .GroupBy(t => t.GetTargetJournalAlias())
+                    .ToDictionary(t => t.Key, x => (long) 0);
 
-                // commit base real time state
-                _realTimeState.JobVersion = _jobVersion;
-                _realTimeState.ShapeVersion = _shapeVersion;
+                foreach (var seqItem in maxSeqMap)
+                {
+                    var idSplit = seqItem.Key.Split("_");
+                    var seqCmd = connFactory.GetCommand(string.Format(MaxSeqQuery, idSplit[0], idSplit[1]),
+                        _conn);
 
-                // var _realTimeStateCommit = new Record
-                // {
-                //     Action = Record.Types.Action.RealTimeStateCommit,
-                //     RealTimeStateJson = JsonConvert.SerializeObject(_realTimeState)
-                // };
-                // await responseStream.WriteAsync(_realTimeStateCommit);
+                    var seqReader = await seqCmd.ExecuteReaderAsync();
 
-                realTimeStateCollection.Upsert(_realTimeState);
-
-                Logger.Debug($"Got all records for reload");
+                    if (seqReader.HasRows())
+                    {
+                        await seqReader.ReadAsync();
+                        _realTimeState.LastJournalEntryIdMap[seqItem.Key] =
+                            Convert.ToInt64(seqReader.GetValueById("MAX_JOSEQN"));
+                    }
+                }
             }
+
+
+            // commit base real time state
+            _realTimeState.JobVersion = _jobVersion;
+            _realTimeState.ShapeVersion = _shapeVersion;
+
+            if (!singleRead)
+            {
+                var realTimeStateCommit = new Record
+                {
+                    Action = Record.Types.Action.RealTimeStateCommit,
+                    RealTimeStateJson = JsonConvert.SerializeObject(_realTimeState)
+                };
+                await responseStream.WriteAsync(realTimeStateCommit);
+            }
+
+            _realTimeStateCollection.Upsert(_realTimeState);
+
+            Logger.Debug($"Got all records for reload");
         }
     }
 }
