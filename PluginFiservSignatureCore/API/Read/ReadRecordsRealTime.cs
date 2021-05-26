@@ -312,11 +312,9 @@ namespace PluginFiservSignatureCore.API.Read
                             await PreLoadCollection(connectionFactory, responseStream, _tempCollection, false,
                                 singleRead);
 
-                            var tempRecordsCollection = db.GetCollection<RealTimeRecord>(TempCollectionName);
-
                             foreach (var realTimeRecord in _realTimeRecordsCollection.FindAll())
                             {
-                                if (tempRecordsCollection.FindById(realTimeRecord.Id) == null)
+                                if (_tempCollection.FindById(realTimeRecord.Id) == null)
                                 {
                                     // delete record
                                     Logger.Info($"Deleting record {realTimeRecord.Id}");

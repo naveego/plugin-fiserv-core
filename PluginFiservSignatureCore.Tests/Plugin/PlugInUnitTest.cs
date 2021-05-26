@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Data;
 using System.Data.Odbc;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Threading;
@@ -22,14 +23,35 @@ namespace PluginFiservSignatureCore.Plugin
 {
     public class PluginTest
     {
+        private readonly string PermPath = "../../../Perm";
+        
         private readonly Mock<IConnection> _mockOdbcConnection = new Mock<IConnection>();
 
-        private ConnectRequest GetConnectSettings()
+        private ConnectRequest GetConnectSettings(bool lightSync = false, RealTimeSettings singleRealTimeSettings = null)
         {
+            var di = new DirectoryInfo(PermPath);
+
+            foreach (var file in di.GetFiles())
+            {
+                file.Delete(); 
+            }
+            
+            foreach (var dir in di.GetDirectories())
+            {
+                dir.Delete(true); 
+            }
+            
+            var settings = new Settings
+            {
+                ConnectionString = "test connection",
+                Password = "password",
+                LightSync = lightSync,
+                SingleRealTimeSettings = singleRealTimeSettings
+            };
+            
             return new ConnectRequest
             {
-                SettingsJson =
-                    "{\"ConnectionString\":\"test connection\",\"Password\":\"password\",\"PrePublishQuery\":\"\",\"PostPublishQuery\":\"\",\"_server\":{\"Connected\":true}}",
+                SettingsJson = JsonConvert.SerializeObject(settings),
                 OauthConfiguration = new OAuthConfiguration(),
                 OauthStateJson = ""
             };
@@ -793,6 +815,83 @@ FROM BNKPRD95.CFP10201",
             var recordsRts = records.Where(r => r.Action == Record.Types.Action.RealTimeStateCommit).ToList();
             Assert.Equal(6, records.Count); // total
             Assert.Equal(2, recordsRts.Count);
+            
+            // cleanup
+            await channel.ShutdownAsync();
+            await server.ShutdownAsync();
+        }
+        
+        [Fact]
+        public async Task ReadStreamRealTimeSingleTest()
+        {
+            // setup
+            Server server = new Server
+            {
+                Services = {Publisher.BindService(new PluginFiservSignatureCore.Plugin.Plugin(GetMockConnectionFactory()))},
+                Ports = {new ServerPort("localhost", 0, ServerCredentials.Insecure)}
+            };
+            server.Start();
+
+            var port = server.Ports.First().BoundPort;
+
+            var channel = new Channel($"localhost:{port}", ChannelCredentials.Insecure);
+            var client = new Publisher.PublisherClient(channel);
+            
+            var configureRequest = new ConfigureRequest
+            {
+                TemporaryDirectory = "../../../Temp",
+                PermanentDirectory = "../../../Perm",
+                LogDirectory = "../../../Logs",
+                DataVersions = new DataVersions(),
+                LogLevel = LogLevel.Debug
+            };
+            
+            var connectRequest = GetConnectSettings(true, GetRealTimeSettings());
+
+            var request = new ReadRequest()
+            {
+                Schema = GetTestSchemaRealTime(),
+                Limit = 2,
+                RealTimeSettingsJson = "",
+                RealTimeStateJson = "",
+                DataVersions = new DataVersions
+                {
+                    JobId = "test-job",
+                    JobDataVersion = 1,
+                    ShapeId = "test-shape",
+                    ShapeDataVersion = 1
+                },
+            };
+            
+            // act
+            // number of records w/ w/out data, number of real time state commits, real time state last read
+            var records = new List<Record>();
+            try
+            {
+                client.Configure(configureRequest);
+                client.Connect(connectRequest);
+
+
+                var cancellationToken = new CancellationTokenSource();
+                // cancellationToken.CancelAfter(5000);
+                var response = client.ReadStream(request, null, null, cancellationToken.Token);
+                var responseStream = response.ResponseStream;
+
+
+                while (await responseStream.MoveNext())
+                {
+                    records.Add(responseStream.Current);
+                }
+            }
+            catch (Exception e)
+            {
+                Assert.Contains("Status(StatusCode=\"Cancelled\", Detail=\"Cancelled\",", e.Message);
+            }
+            
+            // assert
+            var recordsRts = records.Where(r => r.Action == Record.Types.Action.RealTimeStateCommit).ToList();
+            Assert.Equal(4, records.Count); // total
+            Assert.Equal(0, recordsRts.Count);
             
             // cleanup
             await channel.ShutdownAsync();
