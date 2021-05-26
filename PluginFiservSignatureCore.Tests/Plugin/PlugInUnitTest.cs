@@ -754,7 +754,7 @@ FROM BNKPRD95.CFP10201",
                 Schema = GetTestSchemaRealTime(),
                 Limit = 2,
                 RealTimeSettingsJson = JsonConvert.SerializeObject(GetRealTimeSettings()),
-                RealTimeStateJson = JsonConvert.SerializeObject(new RealTimeState()),
+                RealTimeStateJson = JsonConvert.SerializeObject(new RealTimeState(1,1)),
                 DataVersions = new DataVersions
                 {
                     JobId = "test-job",

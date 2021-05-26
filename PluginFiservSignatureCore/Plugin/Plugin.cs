@@ -103,10 +103,9 @@ namespace PluginFiservSignatureCore.Plugin
             }
 
             // test cluster factory
+            var conn = _connectionFactory.GetConnection();
             try
             {
-                var conn = _connectionFactory.GetConnection();
-
                 await conn.OpenAsync();
 
                 if (!await conn.PingAsync())
@@ -131,6 +130,10 @@ namespace PluginFiservSignatureCore.Plugin
                     OauthError = "",
                     SettingsError = ""
                 };
+            }
+            finally
+            {
+                await conn.CloseAsync();
             }
 
             _server.Connected = true;
@@ -289,30 +292,44 @@ namespace PluginFiservSignatureCore.Plugin
                 var limit = request.Limit;
                 var limitFlag = request.Limit != 0;
                 var jobId = request.JobId;
+                var lightSync = _server.Settings.LightSync ?? false;
                 long recordsCount = 0;
 
                 Logger.SetLogPrefix(jobId);
 
                 if (!string.IsNullOrWhiteSpace(request.RealTimeSettingsJson))
                 {
-                    recordsCount = await Read.ReadRecordsRealTimeAsync(_connectionFactory, request, responseStream,
-                        context, _server.Config.PermanentDirectory);
+                    var realTimeSettings =
+                        JsonConvert.DeserializeObject<RealTimeSettings>(request.RealTimeSettingsJson);
+
+                    recordsCount = await Read.ReadRecordsRealTimeAsync(_connectionFactory, request, realTimeSettings,
+                        responseStream,
+                        context, _server.Config.PermanentDirectory, lightSync, false);
                 }
                 else
                 {
-                    var records = Read.ReadRecords(_connectionFactory, schema);
-
-                    await foreach (var record in records)
+                    if (_server.Settings.IsSingleRealTimeRead())
                     {
-                        // stop publishing if the limit flag is enabled and the limit has been reached or the server is disconnected
-                        if (limitFlag && recordsCount == limit || !_server.Connected)
-                        {
-                            break;
-                        }
+                        recordsCount = await Read.ReadRecordsRealTimeAsync(_connectionFactory, request,
+                            _server.Settings.SingleRealTimeSettings, responseStream,
+                            context, _server.Config.PermanentDirectory, lightSync, true);
+                    }
+                    else
+                    {
+                        var records = Read.ReadRecords(_connectionFactory, schema);
 
-                        // publish record
-                        await responseStream.WriteAsync(record);
-                        recordsCount++;
+                        await foreach (var record in records)
+                        {
+                            // stop publishing if the limit flag is enabled and the limit has been reached or the server is disconnected
+                            if (limitFlag && recordsCount == limit || !_server.Connected)
+                            {
+                                break;
+                            }
+
+                            // publish record
+                            await responseStream.WriteAsync(record);
+                            recordsCount++;
+                        }
                     }
                 }
 

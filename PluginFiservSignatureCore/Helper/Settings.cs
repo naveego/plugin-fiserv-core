@@ -1,4 +1,5 @@
 using System;
+using PluginFiservSignatureCore.API.Read;
 
 namespace PluginFiservSignatureCore.Helper
 {
@@ -6,6 +7,8 @@ namespace PluginFiservSignatureCore.Helper
     {
         public string ConnectionString { get; set; }
         public string Password { get; set; }
+        public bool? LightSync { get; set; }
+        public RealTimeSettings SingleRealTimeSettings { get; set; }
 
         /// <summary>
         /// Validates the settings input object
@@ -22,6 +25,11 @@ namespace PluginFiservSignatureCore.Helper
         public string GetConnectionString()
         {
             return ConnectionString.Replace("PASSWORD", Password);
+        }
+
+        public bool IsSingleRealTimeRead()
+        {
+            return SingleRealTimeSettings != null;
         }
     }
 }
